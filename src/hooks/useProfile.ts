@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { supabase, Profile } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import type { Database } from '@/integrations/supabase/types'
+
+type Profile = Database['public']['Tables']['profiles']['Row']
 import { useAuth } from './useAuth'
 
 export function useProfile() {
@@ -23,7 +26,7 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
+        .eq('user_id', user.id)
         .single()
 
       if (error && error.code !== 'PGRST116') {
@@ -46,7 +49,7 @@ export function useProfile() {
       const { error } = await supabase
         .from('profiles')
         .update(updates)
-        .eq('id', user.id)
+        .eq('user_id', user.id)
 
       if (error) throw error
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase, Quest, UserQuest, Badge, UserBadge, QuestExercise } from '@/lib/supabase'
+import { useQuests } from '@/hooks/useQuests'
+import { useBadges } from '@/hooks/useBadges'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -13,66 +14,10 @@ export default function Dashboard() {
   const { profile, calculateLevel, getXpProgress } = useProfile()
   const { signOut } = useAuth()
   const navigate = useNavigate()
-  const [quests, setQuests] = useState<(Quest & { status: UserQuest['status']; exercises: QuestExercise[] })[]>([])
-  const [badges, setBadges] = useState<(Badge & { unlocked: boolean })[]>([])
-  const [loading, setLoading] = useState(true)
+  const { quests, loading: questsLoading } = useQuests()
+  const { badges, loading: badgesLoading } = useBadges()
 
-  useEffect(() => {
-    if (profile) {
-      fetchData()
-    }
-  }, [profile])
-
-  const fetchData = async () => {
-    if (!profile) return
-
-    try {
-      // Fetch quests with user status
-      const { data: questsData, error: questsError } = await supabase
-        .from('quests')
-        .select(`
-          *,
-          user_quests!inner(status),
-          quest_exercises(*)
-        `)
-        .eq('user_quests.user_id', profile.id)
-        .order('order_index')
-
-      if (questsError) throw questsError
-
-      // Fetch badges with user unlock status
-      const { data: badgesData, error: badgesError } = await supabase
-        .from('badges')
-        .select(`
-          *,
-          user_badges(unlocked_at)
-        `)
-        .eq('user_badges.user_id', profile.id)
-
-      if (badgesError) throw badgesError
-
-      setQuests(questsData?.map(q => ({
-        ...q,
-        status: q.user_quests[0]?.status || 'locked',
-        exercises: q.quest_exercises || []
-      })) || [])
-
-      setBadges(badgesData?.map(b => ({
-        ...b,
-        unlocked: b.user_badges?.length > 0
-      })) || [])
-
-    } catch (error) {
-      console.error('Error fetching data:', error)
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les données",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  const loading = questsLoading || badgesLoading
 
   const handleStartQuest = (questId: string) => {
     navigate(`/train/${questId}`)
@@ -148,9 +93,9 @@ export default function Dashboard() {
                   <span className="text-xl">💪</span>
                   <span className="font-semibold text-red-500">Force</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{profile.stat_force}/50</span>
+                <span className="text-sm text-muted-foreground">{profile.stat_force}</span>
               </div>
-              <Progress value={(profile.stat_force / 50) * 100} className="h-2" />
+              <Progress value={Math.min((profile.stat_force / 100) * 100, 100)} className="h-2" />
             </CardContent>
           </Card>
 
@@ -161,9 +106,9 @@ export default function Dashboard() {
                   <span className="text-xl">🏃</span>
                   <span className="font-semibold text-green-500">Endurance</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{profile.stat_endurance}/50</span>
+                <span className="text-sm text-muted-foreground">{profile.stat_endurance}</span>
               </div>
-              <Progress value={(profile.stat_endurance / 50) * 100} className="h-2" />
+              <Progress value={Math.min((profile.stat_endurance / 100) * 100, 100)} className="h-2" />
             </CardContent>
           </Card>
 
@@ -174,9 +119,9 @@ export default function Dashboard() {
                   <span className="text-xl">⚡</span>
                   <span className="font-semibold text-blue-500">Agilité</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{profile.stat_agilite}/50</span>
+                <span className="text-sm text-muted-foreground">{profile.stat_agilite}</span>
               </div>
-              <Progress value={(profile.stat_agilite / 50) * 100} className="h-2" />
+              <Progress value={Math.min((profile.stat_agilite / 100) * 100, 100)} className="h-2" />
             </CardContent>
           </Card>
 
@@ -187,9 +132,9 @@ export default function Dashboard() {
                   <span className="text-xl">🧠</span>
                   <span className="font-semibold text-purple-500">Mental</span>
                 </div>
-                <span className="text-sm text-muted-foreground">{profile.stat_mental}/50</span>
+                <span className="text-sm text-muted-foreground">{profile.stat_mental}</span>
               </div>
-              <Progress value={(profile.stat_mental / 50) * 100} className="h-2" />
+              <Progress value={Math.min((profile.stat_mental / 100) * 100, 100)} className="h-2" />
             </CardContent>
           </Card>
         </div>

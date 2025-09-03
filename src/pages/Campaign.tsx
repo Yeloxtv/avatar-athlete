@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase, Quest, UserQuest, QuestExercise } from '@/lib/supabase'
+import { useQuests } from '@/hooks/useQuests'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -9,50 +9,8 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from '@/hooks/use-toast'
 
 export default function Campaign() {
-  const { profile } = useProfile()
   const navigate = useNavigate()
-  const [quests, setQuests] = useState<(Quest & { status: UserQuest['status']; exercises: QuestExercise[] })[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (profile) {
-      fetchQuests()
-    }
-  }, [profile])
-
-  const fetchQuests = async () => {
-    if (!profile) return
-
-    try {
-      const { data, error } = await supabase
-        .from('quests')
-        .select(`
-          *,
-          user_quests!inner(status),
-          quest_exercises(*)
-        `)
-        .eq('user_quests.user_id', profile.id)
-        .order('order_index')
-
-      if (error) throw error
-
-      setQuests(data?.map(q => ({
-        ...q,
-        status: q.user_quests[0]?.status || 'locked',
-        exercises: q.quest_exercises || []
-      })) || [])
-
-    } catch (error) {
-      console.error('Error fetching quests:', error)
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les quêtes",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { quests, loading } = useQuests()
 
   const getWorkoutTypeLabel = (type: string) => {
     switch (type) {
