@@ -95,7 +95,7 @@ export default function Training() {
       const { data: userQuest, error: userQuestError } = await supabase
         .from('user_quests')
         .select('status')
-        .eq('user_id', profile.id)
+        .eq('user_id', profile.user_id)
         .eq('quest_id', questId)
         .single()
 
@@ -130,7 +130,7 @@ export default function Training() {
       const { data: existingSession } = await supabase
         .from('workout_sessions')
         .select('*')
-        .eq('user_id', profile.id)
+        .eq('user_id', profile.user_id)
         .eq('quest_id', questId)
         .eq('is_completed', false)
         .order('created_at', { ascending: false })
@@ -182,7 +182,7 @@ export default function Training() {
         const { data: newSession, error } = await supabase
           .from('workout_sessions')
           .insert({
-            user_id: profile.id,
+            user_id: profile.user_id,
             quest_id: quest.id,
             workout_type: quest.workout_type,
           })
@@ -296,7 +296,7 @@ export default function Training() {
           status: 'completed',
           completed_at: new Date().toISOString()
         })
-        .eq('user_id', profile.id)
+        .eq('user_id', profile.user_id)
         .eq('quest_id', quest.id)
 
       // Update profile stats
@@ -314,7 +314,7 @@ export default function Training() {
       await supabase
         .from('audit_xp')
         .insert({
-          user_id: profile.id,
+          user_id: profile.user_id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -335,7 +335,7 @@ export default function Training() {
         await supabase
           .from('user_quests')
           .update({ status: 'available' })
-          .eq('user_id', profile.id)
+          .eq('user_id', profile.user_id)
           .eq('quest_id', nextQuest.id)
       }
 
@@ -366,7 +366,7 @@ export default function Training() {
     const { data: completedSessions } = await supabase
       .from('user_quests')
       .select('id')
-      .eq('user_id', profile.id)
+      .eq('user_id', profile.user_id)
       .eq('status', 'completed')
 
     const completedCount = (completedSessions?.length || 0) + 1 // +1 for current quest
@@ -383,7 +383,7 @@ export default function Training() {
         await supabase
           .from('user_badges')
           .upsert({
-            user_id: profile.id,
+            user_id: profile.user_id,
             badge_id: badge.id
           })
       }
@@ -401,7 +401,7 @@ export default function Training() {
         await supabase
           .from('user_badges')
           .upsert({
-            user_id: profile.id,
+            user_id: profile.user_id,
             badge_id: badge.id
           })
       }
@@ -419,7 +419,7 @@ export default function Training() {
         await supabase
           .from('user_badges')
           .upsert({
-            user_id: profile.id,
+            user_id: profile.user_id,
             badge_id: badge.id
           })
       }
