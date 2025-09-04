@@ -30,22 +30,40 @@ export function useQuests() {
       // First, ensure user has quest progress entries
       await initializeUserQuests()
 
+      // Get the campaign
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('id')
+        .eq('slug', 'jaime-pas-le-cardio')
+        .single()
+
+      if (!campaign) return
+
       // Fetch quests with user status
       const { data: questsData, error: questsError } = await supabase
         .from('quests')
         .select(`
           *,
-          user_quests!inner(status),
+          user_quests(status),
           quest_exercises(*)
         `)
-        .eq('user_quests.user_id', user.id)
+        .eq('campaign_id', campaign.id)
         .order('order_index')
 
       if (questsError) throw questsError
 
+      // Get user quests for this user
+      const { data: userQuests } = await supabase
+        .from('user_quests')
+        .select('quest_id, status')
+        .eq('user_id', user.id)
+
+      // Create a map for quick lookup
+      const userQuestMap = new Map(userQuests?.map(uq => [uq.quest_id, uq.status]) || [])
+
       setQuests(questsData?.map(q => ({
         ...q,
-        status: q.user_quests[0]?.status || 'locked',
+        status: userQuestMap.get(q.id) || 'locked',
         exercises: q.quest_exercises || []
       })) || [])
 
