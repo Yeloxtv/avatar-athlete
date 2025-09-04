@@ -10,7 +10,7 @@ import { Badge as BadgeComponent } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 
-export default function Dashboard() {
+export default function Profil() {
   const { profile, calculateLevel, getXpProgress } = useProfile()
   const { signOut } = useAuth()
   const navigate = useNavigate()

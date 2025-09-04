@@ -1,7 +1,7 @@
 import { useAuth } from '@/hooks/useAuth'
 import { useProfile } from '@/hooks/useProfile'
 import Auth from './Auth'
-import Dashboard from './Dashboard'
+import Profil from './Profil'
 
 export default function Index() {
   const { user, loading: authLoading } = useAuth()
@@ -22,5 +22,5 @@ export default function Index() {
     return <Auth />
   }
 
-  return <Dashboard />
+  return <Profil />
 }
