@@ -614,20 +614,20 @@ export default function Training() {
 
             {time > 0 && (
               <div className="text-center space-y-4">
-                <div className="text-lg">
-                  Tours complétés: <span className="font-bold text-accent">{rounds}</span>
-                  {quest.rounds_target > 0 && ` / ${quest.rounds_target}`}
-                </div>
-                
-                {(quest.workout_type === 'for_time' || quest.workout_type === 'amrap') && (
+                <div className="flex items-center justify-center space-x-4">
+                  <div className="text-lg">
+                    Tours complétés: <span className="font-bold text-accent">{rounds}</span>
+                    {quest.rounds_target > 0 && ` / ${quest.rounds_target}`}
+                  </div>
+                  
                   <Button 
                     onClick={addRound}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                    className="bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-white"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Ajouter un tour
+                    <Plus className="w-4 h-4" />
                   </Button>
-                )}
+                </div>
 
                 {/* Round Times History */}
                 {roundTimes.length > 0 && (
