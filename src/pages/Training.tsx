@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Play, Pause, RotateCcw, Plus, Check } from 'lucide-react'
+import { ArrowLeft, Play, Pause, RotateCcw, Plus, Check, Info, Timer } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 interface SessionSummary {
   rounds: number
@@ -20,6 +20,12 @@ interface SessionSummary {
     mental: number
     total: number
   }
+}
+
+interface RoundTime {
+  roundNumber: number
+  duration: number
+  timestamp: number
 }
 
 export default function Training() {
@@ -39,6 +45,8 @@ export default function Training() {
   const [showSummary, setShowSummary] = useState(false)
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [roundTimes, setRoundTimes] = useState<RoundTime[]>([])
+  const [roundStartTime, setRoundStartTime] = useState<number>(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -193,6 +201,7 @@ export default function Training() {
         setSession(newSession)
       }
 
+      setRoundStartTime(time)
       startCountdown()
     } catch (error) {
       console.error('Error starting workout:', error)
@@ -228,9 +237,21 @@ export default function Training() {
   }
 
   const addRound = async () => {
+    const currentTime = time
+    const roundDuration = roundStartTime > 0 ? currentTime - roundStartTime : currentTime
+    
     const newRounds = rounds + 1
     setRounds(newRounds)
     setCurrentRound(newRounds + 1)
+    
+    // Add round time to history
+    const newRoundTime: RoundTime = {
+      roundNumber: newRounds,
+      duration: roundDuration,
+      timestamp: Date.now()
+    }
+    setRoundTimes(prev => [...prev, newRoundTime])
+    setRoundStartTime(currentTime)
 
     if (session) {
       await supabase
@@ -238,12 +259,17 @@ export default function Training() {
         .insert({
           session_id: session.id,
           round_no: newRounds,
-          duration_seconds: time,
+          duration_seconds: roundDuration,
           reps_total: quest?.exercises.reduce((sum, ex) => sum + ex.target_reps, 0) || 0
         })
 
       saveSession()
     }
+
+    toast({
+      title: `Tour ${newRounds} terminé !`,
+      description: `Temps: ${formatTime(roundDuration)}`,
+    })
   }
 
   const saveSession = async () => {
@@ -603,6 +629,28 @@ export default function Training() {
                   </Button>
                 )}
 
+                {/* Round Times History */}
+                {roundTimes.length > 0 && (
+                  <Card className="mt-4">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Timer className="w-4 h-4" />
+                        Temps par tour
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {roundTimes.map((roundTime) => (
+                          <div key={roundTime.roundNumber} className="flex justify-between text-sm">
+                            <span>Tour {roundTime.roundNumber}</span>
+                            <span className="font-mono">{formatTime(roundTime.duration)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 <Button 
                   onClick={finishWorkout}
                   className="bg-purple-600 hover:bg-purple-700"
@@ -632,7 +680,45 @@ export default function Training() {
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">{exercise.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{exercise.name}</span>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="ghost" className="p-1 h-6 w-6">
+                            <Info className="w-3 h-3" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>{exercise.name}</DialogTitle>
+                            <DialogDescription>
+                              Instructions pour bien réaliser l'exercice
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3">
+                            {exercise.target_reps > 0 && (
+                              <div className="text-sm">
+                                <strong>Répétitions cibles:</strong> {exercise.target_reps}
+                              </div>
+                            )}
+                            {exercise.notes && (
+                              <div className="text-sm">
+                                <strong>Notes:</strong> {exercise.notes}
+                              </div>
+                            )}
+                            <div className="text-sm text-muted-foreground">
+                              <strong>Conseils généraux:</strong>
+                              <ul className="list-disc list-inside mt-1 space-y-1">
+                                <li>Concentrez-vous sur la forme plutôt que la vitesse</li>
+                                <li>Respirez de manière contrôlée</li>
+                                <li>Engagez votre core</li>
+                                <li>Arrêtez si vous ressentez une douleur</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                     {exercise.target_reps > 0 && (
                       <span className="text-sm text-muted-foreground">
                         {exercise.target_reps} reps
