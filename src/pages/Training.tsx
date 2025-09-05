@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase, Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,17 +10,14 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Play, Pause, RotateCcw, Plus, Check, Info, Timer } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
+import { LevelDisplay } from '@/components/ui/level-display'
+import { RewardResult } from '@/types/rpg'
 
 interface SessionSummary {
   rounds: number
   totalTime: number
-  xpGained: {
-    force: number
-    endurance: number
-    agilite: number
-    mental: number
-    total: number
-  }
+  questTitle?: string
 }
 
 interface RoundTime {
@@ -32,6 +30,7 @@ export default function Training() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
   const { profile, updateProfile } = useProfile()
+  const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
   const [session, setSession] = useState<WorkoutSession | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -44,6 +43,8 @@ export default function Training() {
   const [countdown, setCountdown] = useState(0)
   const [showSummary, setShowSummary] = useState(false)
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null)
+  const [showRewardsModal, setShowRewardsModal] = useState(false)
+  const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [roundTimes, setRoundTimes] = useState<RoundTime[]>([])
   const [roundStartTime, setRoundStartTime] = useState<number>(0)
@@ -289,19 +290,13 @@ export default function Training() {
     setSessionSummary({
       rounds,
       totalTime: time,
-      xpGained: {
-        force: quest?.xp_force || 0,
-        endurance: quest?.xp_endurance || 0,
-        agilite: quest?.xp_agilite || 0,
-        mental: quest?.xp_mental || 0,
-        total: quest?.xp_total || 0,
-      }
+      questTitle: quest?.title
     })
     setShowSummary(true)
   }
 
   const validateWorkout = async () => {
-    if (!quest || !profile || !session) return
+    if (!quest || !profile || !session || isProcessingRewards) return
 
     try {
       // Mark session as completed
@@ -325,16 +320,17 @@ export default function Training() {
         .eq('user_id', profile.user_id)
         .eq('quest_id', quest.id)
 
-      // Update profile stats
-      const newStats = {
-        xp_total: profile.xp_total + quest.xp_total,
-        stat_force: profile.stat_force + quest.xp_force,
-        stat_endurance: profile.stat_endurance + quest.xp_endurance,
-        stat_agilite: profile.stat_agilite + quest.xp_agilite,
-        stat_mental: profile.stat_mental + quest.xp_mental,
-      }
+      // Process RPG rewards
+      const rewards = await processWorkoutRewards({
+        durationMin: Math.ceil(time / 60),
+        workoutType: quest.workout_type,
+        intensity: rounds >= quest.rounds_target ? 'HIGH' : rounds >= quest.rounds_target * 0.7 ? 'MEDIUM' : 'LOW'
+      })
 
-      await updateProfile(newStats)
+      if (rewards) {
+        setRewardResults(rewards)
+        setShowRewardsModal(true)
+      }
 
       // Log XP audit
       await supabase
@@ -368,13 +364,6 @@ export default function Training() {
       // Check for badge unlocks
       await checkBadgeUnlocks()
 
-      toast({
-        title: "🔥 Quête terminée !",
-        description: `+${quest.xp_total} XP gagnés ! Nouvelle quête débloquée !`,
-      })
-
-      navigate('/campaign')
-
     } catch (error) {
       console.error('Error validating workout:', error)
       toast({
@@ -383,6 +372,12 @@ export default function Training() {
         variant: "destructive",
       })
     }
+  }
+
+  const handleRewardsModalClose = () => {
+    setShowRewardsModal(false)
+    setRewardResults(null)
+    navigate('/campaign')
   }
 
   const checkBadgeUnlocks = async () => {
@@ -522,6 +517,12 @@ export default function Training() {
               )}
             </div>
           </div>
+          <LevelDisplay variant="compact" className="hidden md:block" />
+        </div>
+
+        {/* Level Display Mobile */}
+        <div className="md:hidden mb-4">
+          <LevelDisplay variant="compact" />
         </div>
 
         {/* Countdown Overlay */}
@@ -756,7 +757,7 @@ export default function Training() {
 
         {/* Session Summary Dialog */}
         <Dialog open={showSummary} onOpenChange={setShowSummary}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md rpg-card">
             <DialogHeader>
               <DialogTitle className="text-center text-xl">
                 🎉 Séance terminée !
@@ -769,7 +770,7 @@ export default function Training() {
             {sessionSummary && (
               <div className="space-y-4">
                 <div className="text-center space-y-2">
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-primary">
                     {formatTime(sessionSummary.totalTime)}
                   </div>
                   <div className="text-muted-foreground">
@@ -777,50 +778,28 @@ export default function Training() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <h4 className="font-semibold">XP à gagner :</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {sessionSummary.xpGained.force > 0 && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <span>💪</span>
-                        <span className="text-red-500">+{sessionSummary.xpGained.force} Force</span>
-                      </div>
-                    )}
-                    {sessionSummary.xpGained.endurance > 0 && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <span>🏃</span>
-                        <span className="text-green-500">+{sessionSummary.xpGained.endurance} Endurance</span>
-                      </div>
-                    )}
-                    {sessionSummary.xpGained.agilite > 0 && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <span>⚡</span>
-                        <span className="text-blue-500">+{sessionSummary.xpGained.agilite} Agilité</span>
-                      </div>
-                    )}
-                    {sessionSummary.xpGained.mental > 0 && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <span>🧠</span>
-                        <span className="text-purple-500">+{sessionSummary.xpGained.mental} Mental</span>
-                      </div>
-                    )}
+                <div className="space-y-3">
+                  <div className="text-center text-muted-foreground">
+                    Prêt à valider cette séance et gagner des récompenses RPG ?
                   </div>
-                  <div className="text-center font-bold text-lg border-t pt-2">
-                    Total: +{sessionSummary.xpGained.total} XP
+                  <div className="text-sm text-center text-accent">
+                    ⚡ Calcul automatique des XP et progression
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                   <Button 
                     onClick={validateWorkout}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="flex-1 hero-gradient text-white font-semibold"
+                    disabled={isProcessingRewards}
                   >
-                    Valider et gagner l'XP
+                    {isProcessingRewards ? "Traitement..." : "Valider et Progresser"}
                   </Button>
                   <Button 
                     onClick={() => setShowSummary(false)}
                     variant="outline"
                     className="flex-1"
+                    disabled={isProcessingRewards}
                   >
                     Annuler
                   </Button>
@@ -829,6 +808,14 @@ export default function Training() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* RPG Rewards Modal */}
+        <WorkoutRewardsModal
+          isOpen={showRewardsModal}
+          onClose={handleRewardsModalClose}
+          rewards={rewardResults}
+          sessionData={sessionSummary}
+        />
       </div>
     </div>
   )
