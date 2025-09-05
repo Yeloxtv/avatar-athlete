@@ -12,73 +12,128 @@ interface QuestWithStatus extends Quest {
   exercises: QuestExercise[]
 }
 
-export function useQuests() {
-  const { user } = useAuth()
-  const [quests, setQuests] = useState<QuestWithStatus[]>([])
-  const [loading, setLoading] = useState(true)
+interface UseQuestsOptions {
+  campaignSlug?: string
+  campaignId?: string
+  enabled?: boolean
+}
 
-  useEffect(() => {
-    if (user) {
-      fetchQuests()
-    }
-  }, [user])
+export function useQuests({ campaignId, campaignSlug, enabled = true }: UseQuestsOptions = {}) {
+  const [quests, setQuests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const { user } = useAuth()
+
+  // Fonction pour récupérer le campaignId depuis le slug
+  const getCampaignIdFromSlug = async (slug: string) => {
+    const { data, error } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('slug', slug)
+      .single()
+    
+    if (error) throw error
+    return data.id
+  }
 
   const fetchQuests = async () => {
-    if (!user) return
+    if (!enabled) {
+      setLoading(false)
+      return
+    }
 
     try {
-      // First, ensure user has quest progress entries
-      await initializeUserQuests()
+      let finalCampaignId = campaignId
 
-      // Get the campaign
-      const { data: campaign } = await supabase
-        .from('campaigns')
-        .select('id')
-        .eq('slug', 'jaime-pas-le-cardio')
-        .single()
+      // Si on a un slug mais pas d'ID, récupérer l'ID
+      if (!finalCampaignId && campaignSlug) {
+        finalCampaignId = await getCampaignIdFromSlug(campaignSlug)
+      }
 
-      if (!campaign) return
+      if (!finalCampaignId) {
+        console.log('No campaign ID available')
+        setQuests([])
+        setLoading(false)
+        return
+      }
 
-      // Fetch quests with user status
+      // Initialiser les user_quests si l'utilisateur est connecté
+      if (user) {
+        await initializeUserQuests(finalCampaignId)
+      }
+
+      // Requête simple sans jointure compliquée
       const { data: questsData, error: questsError } = await supabase
         .from('quests')
         .select(`
           *,
-          user_quests(status),
-          quest_exercises(*)
+          quest_exercises (
+            id,
+            name,
+            target_reps,
+            order_index
+          )
         `)
-        .eq('campaign_id', campaign.id)
+        .eq('campaign_id', finalCampaignId)
         .order('order_index')
 
       if (questsError) throw questsError
 
-      // Get user quests for this user
-      const { data: userQuests } = await supabase
-        .from('user_quests')
-        .select('quest_id, status')
-        .eq('user_id', user.id)
+      // Si utilisateur connecté, récupérer ses user_quests séparément
+      let userQuestsData = []
+      if (user && questsData && questsData.length > 0) {
+        const questIds = questsData.map(q => q.id)
+        const { data: userQuests, error: userQuestsError } = await supabase
+          .from('user_quests')
+          .select('quest_id, status')
+          .eq('user_id', user.id)
+          .in('quest_id', questIds)
+        
+        if (!userQuestsError) {
+          userQuestsData = userQuests || []
+        }
+      }
 
-      // Create a map for quick lookup
-      const userQuestMap = new Map(userQuests?.map(uq => [uq.quest_id, uq.status]) || [])
-
-      setQuests(questsData?.map(q => ({
-        ...q,
-        status: userQuestMap.get(q.id) || 'locked',
-        exercises: q.quest_exercises || []
-      })) || [])
-
+      console.log('Raw quests data:', questsData)
+      console.log('User quests data:', userQuestsData)
+      
+      // Combiner les données
+      const questsWithExercisesAndStatus = questsData?.map((quest, index) => {
+        let status = 'locked' // Par défaut
+        
+        if (user) {
+          const userQuest = userQuestsData.find(uq => uq.quest_id === quest.id)
+          if (userQuest) {
+            status = userQuest.status
+          } else {
+            // Si pas de user_quest, la première est unlocked
+            status = index === 0 ? 'unlocked' : 'locked'
+          }
+        } else {
+          // Si pas d'utilisateur connecté, tout est visible
+          status = 'unlocked'
+        }
+        
+        return {
+          ...quest,
+          exercises: quest.quest_exercises || [],
+          status: status
+        }
+      }) || []
+      
+      console.log('Final quests with status:', questsWithExercisesAndStatus)
+      setQuests(questsWithExercisesAndStatus)
     } catch (error) {
-      console.error('Error fetching quests:', error)
+      console.error('Error loading quests:', error)
+      setQuests([])
     } finally {
       setLoading(false)
     }
   }
 
-  const initializeUserQuests = async () => {
+  const initializeUserQuests = async (campaignId: string) => {
     if (!user) return
 
     try {
-      // Check if user already has quest progress
       const { data: existingQuests } = await supabase
         .from('user_quests')
         .select('id')
@@ -87,21 +142,10 @@ export function useQuests() {
 
       if (existingQuests && existingQuests.length > 0) return
 
-      // Get the campaign
-      const { data: campaign } = await supabase
-        .from('campaigns')
-        .select('id')
-        .eq('slug', 'jaime-pas-le-cardio')
-        .single()
-
-      if (!campaign) return
-
-      // Initialize user quests
       await supabase.rpc('initialize_user_quests', {
         p_user_id: user.id,
-        p_campaign_id: campaign.id
+        p_campaign_id: campaignId
       })
-
     } catch (error) {
       console.error('Error initializing user quests:', error)
     }
@@ -117,7 +161,6 @@ export function useQuests() {
       })
 
       if (data && typeof data === 'object' && 'success' in data) {
-        // Refresh quests
         await fetchQuests()
         return data as { success: boolean; xp_gained: number; next_quest_unlocked: boolean }
       }
@@ -126,10 +169,78 @@ export function useQuests() {
     }
   }
 
+  const createQuest = async (questData: Omit<Quest, 'id' | 'created_at'>) => {
+    const { data, error } = await supabase
+      .from('quests')
+      .insert([questData])
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  }
+
+  const updateQuest = async (id: string, updates: Partial<Quest>) => {
+    const { data, error } = await supabase
+      .from('quests')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  }
+
+  const deleteQuest = async (id: string) => {
+    await supabase
+      .from('quest_exercises')
+      .delete()
+      .eq('quest_id', id)
+    
+    const { error } = await supabase
+      .from('quests')
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+  }
+
+  const saveQuestExercises = async (questId: string, exercises: Omit<QuestExercise, 'id' | 'quest_id'>[]) => {
+    await supabase
+      .from('quest_exercises')
+      .delete()
+      .eq('quest_id', questId)
+    
+    if (exercises.length > 0) {
+      const { error } = await supabase
+        .from('quest_exercises')
+        .insert(
+          exercises.map(ex => ({
+            quest_id: questId,
+            name: ex.name,
+            target_reps: ex.target_reps,
+            order_index: ex.order_index
+          }))
+        )
+      
+      if (error) throw error
+    }
+  }
+
+  useEffect(() => {
+    fetchQuests()
+  }, [campaignId, campaignSlug, enabled, user?.id])
+
   return {
     quests,
     loading,
     completeQuest,
-    refetch: fetchQuests
+    refetch: fetchQuests,
+    createQuest,
+    updateQuest,
+    deleteQuest,
+    saveQuestExercises,
+    initializeUserQuests
   }
 }
