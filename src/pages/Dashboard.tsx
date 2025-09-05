@@ -51,6 +51,8 @@ interface Exercise {
   name: string;
   target_reps: number;
   order_index: number;
+  notes?: string;
+  created_at?: string;
 }
 
 interface Quest {
@@ -258,10 +260,22 @@ const handleSaveQuest = async () => {
         workout_type: questData.workout_type || 'simple', // Valeur par défaut si non définie
       };
       
-      const newQuest = await createQuest(dataToSend);
+      // Ajouter xp_total manquant
+      const questWithTotal = {
+        ...dataToSend,
+        xp_total: (dataToSend.xp_force || 0) + (dataToSend.xp_endurance || 0) + 
+                  (dataToSend.xp_agilite || 0) + (dataToSend.xp_mental || 0)
+      };
+      
+      const newQuest = await createQuest(questWithTotal);
       
       if (exercises && exercises.length > 0) {
-        await saveQuestExercises(newQuest.id, exercises);
+        const exercisesWithRequiredFields = exercises.map(ex => ({
+          ...ex,
+          notes: ex.notes || '',
+          created_at: ex.created_at || new Date().toISOString()
+        }));
+        await saveQuestExercises(newQuest.id, exercisesWithRequiredFields);
       }
       toast({ title: "Quête créée avec succès !" });
     } else {

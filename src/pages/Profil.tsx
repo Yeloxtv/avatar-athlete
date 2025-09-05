@@ -52,9 +52,7 @@ export default function Profil() {
     enabled: !!activeCampaign && !!profile
   })
   
-  const { badges = [], loading: badgesLoading } = useBadges({
-    enabled: !!profile
-  })
+  const { badges = [], loading: badgesLoading } = useBadges()
 
   const loading = profileLoading || questsLoading || badgesLoading || campaignLoading
 
@@ -70,8 +68,8 @@ export default function Profil() {
   }
 
   // Calcul des statistiques - avec vérifications de sécurité
-  const currentLevel = calculateLevel(profile?.total_xp || 0)
-  const xpProgress = getXpProgress(profile?.total_xp || 0)
+  const currentLevel = calculateLevel(profile?.xp_total || 0)
+  const xpProgress = getXpProgress(profile?.xp_total || 0)
   
   // Calcul des quêtes avec vérification que quests existe
   const completedQuests = Array.isArray(quests) ? quests.filter(q => q.status === 'completed').length : 0

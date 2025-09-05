@@ -21,22 +21,28 @@ export default function Campaign() {
   useEffect(() => {
     const fetchCampaign = async () => {
       try {
-        let query = supabase
-          .from('campaigns')
-          .select('id, slug, title, description')
-        
         if (slug) {
           // Si on a un slug dans l'URL, récupérer cette campagne spécifique
-          query = query.eq('slug', slug).single()
+          const { data, error } = await supabase
+            .from('campaigns')
+            .select('id, slug, title, description')
+            .eq('slug', slug)
+            .single()
+          
+          if (error) throw error
+          setActiveCampaign(data)
         } else {
           // Sinon, récupérer la première campagne active
-          query = query.eq('is_active', true).limit(1).single()
+          const { data, error } = await supabase
+            .from('campaigns')
+            .select('id, slug, title, description')
+            .eq('is_active', true)
+            .limit(1)
+            .single()
+          
+          if (error) throw error
+          setActiveCampaign(data)
         }
-        
-        const { data, error } = await query
-        
-        if (error) throw error
-        setActiveCampaign(data)
       } catch (error) {
         console.error('Error fetching campaign:', error)
         toast({
