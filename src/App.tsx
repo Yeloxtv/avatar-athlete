@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Campaign from "./pages/Campaign";
 import Training from "./pages/Training";
 import Dashboard from "./pages/Dashboard";
+import DevXpSandbox from "./pages/DevXpSandbox";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,6 +24,7 @@ const App = () => (
           <Route path="/campaign/:slug" element={<Campaign />} />
           <Route path="/train/:questId" element={<Training />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dev-xp-sandbox" element={<DevXpSandbox />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
