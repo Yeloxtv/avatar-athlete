@@ -260,11 +260,17 @@ const handleSaveQuest = async () => {
         workout_type: questData.workout_type || 'simple', // Valeur par défaut si non définie
       };
       
-      // Ajouter xp_total manquant
+      // Ajouter tous les champs requis
       const questWithTotal = {
         ...dataToSend,
         xp_total: (dataToSend.xp_force || 0) + (dataToSend.xp_endurance || 0) + 
-                  (dataToSend.xp_agilite || 0) + (dataToSend.xp_mental || 0)
+                  (dataToSend.xp_agilite || 0) + (dataToSend.xp_mental || 0),
+        // Nouveaux champs requis
+        level_required: 'BEGINNER',
+        equipment_tags: ['POIDS_CORPS'],
+        estimated_duration_minutes: 30,
+        is_one_shot: false,
+        is_published: true
       };
       
       const newQuest = await createQuest(questWithTotal);

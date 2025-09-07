@@ -95,24 +95,36 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          equipment_tags: string[] | null
+          estimated_duration_weeks: number | null
           id: string
           is_active: boolean | null
+          is_published: boolean | null
+          level_required: string | null
           slug: string
           title: string
         }
         Insert: {
           created_at?: string
           description?: string | null
+          equipment_tags?: string[] | null
+          estimated_duration_weeks?: number | null
           id?: string
           is_active?: boolean | null
+          is_published?: boolean | null
+          level_required?: string | null
           slug: string
           title: string
         }
         Update: {
           created_at?: string
           description?: string | null
+          equipment_tags?: string[] | null
+          estimated_duration_weeks?: number | null
           id?: string
           is_active?: boolean | null
+          is_published?: boolean | null
+          level_required?: string | null
           slug?: string
           title?: string
         }
@@ -206,7 +218,12 @@ export type Database = {
           campaign_id: string
           created_at: string
           description: string | null
+          equipment_tags: string[] | null
+          estimated_duration_minutes: number | null
           id: string
+          is_one_shot: boolean | null
+          is_published: boolean | null
+          level_required: string | null
           order_index: number
           rest_seconds: number | null
           rounds_target: number | null
@@ -225,7 +242,12 @@ export type Database = {
           campaign_id: string
           created_at?: string
           description?: string | null
+          equipment_tags?: string[] | null
+          estimated_duration_minutes?: number | null
           id?: string
+          is_one_shot?: boolean | null
+          is_published?: boolean | null
+          level_required?: string | null
           order_index: number
           rest_seconds?: number | null
           rounds_target?: number | null
@@ -244,7 +266,12 @@ export type Database = {
           campaign_id?: string
           created_at?: string
           description?: string | null
+          equipment_tags?: string[] | null
+          estimated_duration_minutes?: number | null
           id?: string
+          is_one_shot?: boolean | null
+          is_published?: boolean | null
+          level_required?: string | null
           order_index?: number
           rest_seconds?: number | null
           rounds_target?: number | null
@@ -430,7 +457,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      user_quest_status: "locked" | "available" | "completed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -557,6 +584,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      user_quest_status: ["locked", "available", "completed"],
+    },
   },
 } as const
