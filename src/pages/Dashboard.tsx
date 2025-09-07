@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from '@/integrations/supabase/client'
 import {
   Card,
   CardContent,
@@ -27,15 +28,13 @@ import {
   X,
   Target,
   Clock,
-  Zap,
   Folder,
   ArrowLeft,
+  Filter,
+  Settings,
 } from "lucide-react";
-import { toast } from "@/components/ui/use-toast";
-import { useCampaigns } from "@/hooks/useCampaigns";
-import { useQuests } from "@/hooks/useQuests";
 
-// Types
+// Types étendus avec les champs de filtrage
 interface Campaign {
   id?: string;
   title: string;
@@ -44,6 +43,9 @@ interface Campaign {
   is_active: boolean;
   created_at?: string;
   quests_count?: number;
+  level_required?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+  equipment_tags?: string[];
+  estimated_duration_weeks?: number;
 }
 
 interface Exercise {
@@ -72,13 +74,39 @@ interface Quest {
   xp_agilite: number;
   xp_mental: number;
   exercises: Exercise[];
+  level_required?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+  equipment_tags?: string[];
+  estimated_duration_minutes?: number;
+  is_one_shot?: boolean;
+  is_published?: boolean;
 }
+
+// Constantes pour les filtres
+const LEVELS = [
+  { value: 'BEGINNER', label: 'Débutant' },
+  { value: 'INTERMEDIATE', label: 'Intermédiaire' },
+  { value: 'ADVANCED', label: 'Avancé' }
+];
+
+const EQUIPMENT_OPTIONS = [
+  { value: 'POIDS_CORPS', label: 'Poids du corps' },
+  { value: 'HALTERES', label: 'Haltères' },
+  { value: 'BARRE', label: 'Barre' },
+  { value: 'KETTLEBELL', label: 'Kettlebell' },
+  { value: 'ELASTIQUES', label: 'Élastiques' },
+  { value: 'BANC', label: 'Banc' },
+  { value: 'CORDE', label: 'Corde à sauter' },
+  { value: 'TAPIS', label: 'Tapis de sol' },
+];
 
 const emptyCampaign: Campaign = {
   title: "",
   slug: "",
   description: "",
   is_active: true,
+  level_required: 'BEGINNER',
+  equipment_tags: [],
+  estimated_duration_weeks: 4,
 };
 
 const emptyQuest: Quest = {
@@ -97,6 +125,11 @@ const emptyQuest: Quest = {
   xp_agilite: 0,
   xp_mental: 0,
   exercises: [],
+  level_required: 'BEGINNER',
+  equipment_tags: [],
+  estimated_duration_minutes: 30,
+  is_one_shot: false,
+  is_published: true,
 };
 
 const emptyExercise: Exercise = {
@@ -106,209 +139,288 @@ const emptyExercise: Exercise = {
 };
 
 export default function QuestAdminDashboard() {
-  // Hooks Supabase
-  const {
-    campaigns,
-    loading: campaignsLoading,
-    createCampaign,
-    updateCampaign,
-    deleteCampaign,
-    refetch: refetchCampaigns,
-  } = useCampaigns();
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
-    null
-  );
-  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
+  // États existants (simulés pour l'exemple)
+  const [campaigns, setCampaigns] = useState([]);
+  const [quests, setQuests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [editingCampaign, setEditingCampaign] = useState(null);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
-
-  // Ajoute les hooks pour les quêtes
-  const {
-    quests,
-    loading: questsLoading,
-    createQuest,
-    updateQuest,
-    deleteQuest,
-    saveQuestExercises,
-    refetch: refetchQuests,
-  } = useQuests({
-    campaignId: selectedCampaign?.id,
-  });
-  const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
+  
+  const [editingQuest, setEditingQuest] = useState(null);
   const [isCreatingQuest, setIsCreatingQuest] = useState(false);
-
+  
   const [activeTab, setActiveTab] = useState("campaigns");
 
-  // État de chargement global
-  const loading = campaignsLoading || questsLoading;
+  // Fonctions utilitaires pour les équipements
+  const handleEquipmentToggle = (equipment, isQuest = false) => {
+    const target = isQuest ? editingQuest : editingCampaign;
+    const setter = isQuest ? setEditingQuest : setEditingCampaign;
+    
+    if (!target) return;
+    
+    const currentEquipment = target.equipment_tags || [];
+    const newEquipment = currentEquipment.includes(equipment)
+      ? currentEquipment.filter(e => e !== equipment)
+      : [...currentEquipment, equipment];
+    
+    setter({
+      ...target,
+      equipment_tags: newEquipment
+    });
+  };
 
-  // ====== FONCTIONS CAMPAGNES ======
+  // Fonctions campagnes (adaptées)
   const handleCreateCampaign = () => {
     setEditingCampaign({ ...emptyCampaign });
     setIsCreatingCampaign(true);
   };
 
-  const handleEditCampaign = (campaign: Campaign) => {
+  const handleEditCampaign = (campaign) => {
     setEditingCampaign({ ...campaign });
     setIsCreatingCampaign(false);
   };
 
   const handleSaveCampaign = async () => {
-    if (!editingCampaign || !editingCampaign.title.trim()) {
-      toast({
-        title: "Le nom de la campagne est requis",
-        variant: "destructive",
-      });
-      return;
-    }
-    try {
-      // Génération automatique du slug si vide
-      if (!editingCampaign.slug.trim()) {
-        editingCampaign.slug = editingCampaign.title
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
-      }
-      if (isCreatingCampaign) {
-        await createCampaign(editingCampaign);
-        toast({ title: "Campagne créée avec succès !" });
-      } else {
-        await updateCampaign(editingCampaign.id!, editingCampaign);
-        toast({ title: "Campagne modifiée avec succès !" });
-      }
-      setEditingCampaign(null);
-      setIsCreatingCampaign(false);
-      await refetchCampaigns();
-    } catch (error) {
-      toast({ title: "Erreur lors de la sauvegarde", variant: "destructive" });
-    }
-  };
+  if (!editingCampaign || !editingCampaign.title?.trim()) {
+    alert("Le nom de la campagne est requis");
+    return;
+  }
 
-  const handleDeleteCampaign = async (campaignId: string) => {
-    const campaign = campaigns.find((c) => c.id === campaignId);
-    if (
-      !confirm(
-        `Êtes-vous sûr de vouloir supprimer la campagne "${campaign?.title}" ? Toutes les quêtes associées seront supprimées.`
-      )
-    )
-      return;
-    try {
-      await deleteCampaign(campaignId);
-      if (selectedCampaign?.id === campaignId) {
-        setSelectedCampaign(null);
-      }
-      toast({ title: "Campagne supprimée avec succès !" });
-      await refetchCampaigns();
-    } catch (error) {
-      toast({ title: "Erreur lors de la suppression", variant: "destructive" });
-    }
-  };
+  // slug auto si vide
+  const slug =
+    (editingCampaign.slug || editingCampaign.title)
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
-  const handleSelectCampaign = (campaign: Campaign) => {
+  const payload = {
+  title: editingCampaign.title,
+  slug,
+  description: editingCampaign.description || "",
+  is_active: Boolean(editingCampaign.is_active),
+
+  level_required: editingCampaign.level_required || 'BEGINNER',
+  equipment_tags: editingCampaign.equipment_tags || [],
+  estimated_duration_weeks: editingCampaign.estimated_duration_weeks || 4,
+};
+
+  try {
+    // (optionnel) indicateur de chargement local
+    // setLoading(true);
+
+    if (isCreatingCampaign) {
+      const { error } = await supabase.from("campaigns").insert([payload]);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from("campaigns")
+        .update(payload)
+        .eq("id", editingCampaign.id);
+      if (error) throw error;
+    }
+
+    await fetchCampaigns(); // ← re-charge la liste
+    setEditingCampaign(null);
+    setIsCreatingCampaign(false);
+    alert(isCreatingCampaign ? "Campagne créée" : "Campagne mise à jour");
+  } catch (e: any) {
+    console.error("[handleSaveCampaign]", e);
+    alert(e?.message || "Erreur lors de la sauvegarde de la campagne");
+  } finally {
+    // setLoading(false);
+  }
+};
+
+
+ const handleDeleteCampaign = async (campaignId: string) => {
+  if (!confirm("Supprimer cette campagne et ses quêtes ?")) return;
+  try {
+    await supabase.from("quest_exercises")
+      .delete()
+      .in("quest_id",
+        (await supabase.from("quests").select("id").eq("campaign_id", campaignId)).data?.map(q => q.id) || []
+      );
+    await supabase.from("quests").delete().eq("campaign_id", campaignId);
+    const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+    if (error) throw error;
+    await fetchCampaigns();
+    if (selectedCampaign?.id === campaignId) setSelectedCampaign(null);
+  } catch (e: any) {
+    alert(e?.message || "Erreur lors de la suppression");
+  }
+};
+  const handleSelectCampaign = async (campaign) => {
     setSelectedCampaign(campaign);
     setActiveTab("quests");
-    // Ici on chargerait les vraies quêtes de la campagne depuis Supabase
+    await fetchQuests(campaign.id);
   };
 
-  // ====== FONCTIONS QUÊTES (inchangées) ======
+  // Fonctions quêtes (adaptées)
   const handleCreateQuest = () => {
     if (!selectedCampaign) return;
-    const questsInCampaign = quests.filter(
-      (q) => q.campaign_id === selectedCampaign.id
-    );
     setEditingQuest({
       ...emptyQuest,
-      campaign_id: selectedCampaign.id!,
-      order_index: questsInCampaign.length + 1,
+      campaign_id: selectedCampaign.id,
+      order_index: quests.length + 1,
     });
     setIsCreatingQuest(true);
   };
 
-  const handleEditQuest = (quest: Quest) => {
+  const handleEditQuest = (quest) => {
     setEditingQuest({ ...quest });
     setIsCreatingQuest(false);
   };
 
-const handleSaveQuest = async () => {
-  if (!editingQuest || !editingQuest.title.trim()) {
-    toast({
-      title: "Le titre de la quête est requis",
-      variant: "destructive",
-    });
+  const handleSaveQuest = async () => {
+  if (!editingQuest || !editingQuest.title?.trim()) {
+    alert("Le titre de la quête est requis");
+    return;
+  }
+  if (!selectedCampaign?.id) {
+    alert("Aucune campagne sélectionnée");
     return;
   }
 
-  // Vérifie que le type est valide
-  if (!['quete', 'boss'].includes(editingQuest.type)) {
-    toast({
-      title: "Type de quête invalide",
-      variant: "destructive",
-    });
-    return;
-  }
-  
+  // Calcule xp_total cohérent avec ton schéma
+  const xp_total =
+    (editingQuest.xp_force || 0) +
+    (editingQuest.xp_endurance || 0) +
+    (editingQuest.xp_agilite || 0) +
+    (editingQuest.xp_mental || 0);
+
+  // ⚠️ IMPORTANT : on n’envoie QUE les colonnes existantes de ta table "quests"
+  const baseQuestPayload = {
+    campaign_id: selectedCampaign.id,
+    order_index: Number(editingQuest.order_index) || 1,
+    title: editingQuest.title,
+    description: editingQuest.description || "",
+    type: editingQuest.type || "quete",
+
+    xp_force: Number(editingQuest.xp_force) || 0,
+    xp_endurance: Number(editingQuest.xp_endurance) || 0,
+    xp_agilite: Number(editingQuest.xp_agilite) || 0,
+    xp_mental: Number(editingQuest.xp_mental) || 0,
+    xp_total,
+
+    workout_type: editingQuest.workout_type || "simple",
+    work_seconds: Number(editingQuest.work_seconds) || 0,
+    rest_seconds: Number(editingQuest.rest_seconds) || 0,
+    rounds_target: Number(editingQuest.rounds_target) || 0,
+    total_minutes: Number(editingQuest.total_minutes) || 0,
+
+    level_required: editingQuest.level_required || 'BEGINNER',
+    equipment_tags: editingQuest.equipment_tags || [],
+    estimated_duration_minutes: editingQuest.estimated_duration_minutes || 30,
+    is_one_shot: Boolean(editingQuest.is_one_shot),
+    is_published: Boolean(editingQuest.is_published),
+  };
+
+  // Les exercices sont gérés à part (table quest_exercises)
+  const exercises = editingQuest.exercises || [];
+
   try {
+    // setLoading(true);
+
     if (isCreatingQuest) {
-      const { exercises, ...questData } = editingQuest;
-      
-      // Assure-toi que tous les champs requis sont présents
-      const dataToSend = {
-        ...questData,
-        campaign_id: selectedCampaign?.id,
-        type: questData.type || 'quete', // Valeur par défaut si non définie
-        workout_type: questData.workout_type || 'simple', // Valeur par défaut si non définie
-      };
-      
-      // Ajouter tous les champs requis
-      const questWithTotal = {
-        ...dataToSend,
-        xp_total: (dataToSend.xp_force || 0) + (dataToSend.xp_endurance || 0) + 
-                  (dataToSend.xp_agilite || 0) + (dataToSend.xp_mental || 0),
-        // Nouveaux champs requis
-        level_required: 'BEGINNER',
-        equipment_tags: ['POIDS_CORPS'],
-        estimated_duration_minutes: 30,
-        is_one_shot: false,
-        is_published: true
-      };
-      
-      const newQuest = await createQuest(questWithTotal);
-      
-      if (exercises && exercises.length > 0) {
-        const exercisesWithRequiredFields = exercises.map(ex => ({
-          ...ex,
-          notes: ex.notes || '',
-          created_at: ex.created_at || new Date().toISOString()
+      // INSERT
+      const { data: created, error } = await supabase
+        .from("quests")
+        .insert([baseQuestPayload])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const questId = created.id as string;
+
+      // INSERT exercices si présents
+      if (exercises.length) {
+        const toInsert = exercises.map((ex: any, idx: number) => ({
+          quest_id: questId,
+          order_index: Number(ex.order_index) || idx + 1,
+          name: ex.name || "",
+          target_reps: Number(ex.target_reps) || 0,
+          notes: ex.notes || "",
         }));
-        await saveQuestExercises(newQuest.id, exercisesWithRequiredFields);
+        const { error: exErr } = await supabase
+          .from("quest_exercises")
+          .insert(toInsert);
+        if (exErr) throw exErr;
       }
-      toast({ title: "Quête créée avec succès !" });
     } else {
-      // ... reste du code inchangé
+      // UPDATE
+      const { error } = await supabase
+        .from("quests")
+        .update(baseQuestPayload)
+        .eq("id", editingQuest.id);
+      if (error) throw error;
+
     }
+
+    await fetchQuests(selectedCampaign.id); // ← re-charge la liste de quêtes
     setEditingQuest(null);
     setIsCreatingQuest(false);
-    await refetchQuests();
-  } catch (error) {
-    console.error('Error saving quest:', error);
-    toast({ 
-      title: "Erreur lors de la sauvegarde", 
-      description: error.message,
-      variant: "destructive" 
-    });
+    alert(isCreatingQuest ? "Quête créée" : "Quête mise à jour");
+  } catch (e: any) {
+    console.error("[handleSaveQuest]", e);
+    alert(e?.message || "Erreur lors de la sauvegarde de la quête");
+  } finally {
+    // setLoading(false);
   }
 };
+
   const handleDeleteQuest = async (questId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette quête ?")) return;
-    try {
-      await deleteQuest(questId);
-      toast({ title: "Quête supprimée avec succès !" });
-      await refetchQuests();
-    } catch (error) {
-      toast({ title: "Erreur lors de la suppression", variant: "destructive" });
-    }
-  };
+  if (!confirm("Supprimer cette quête ?")) return;
+  try {
+    await supabase.from("quest_exercises").delete().eq("quest_id", questId);
+    const { error } = await supabase.from("quests").delete().eq("id", questId);
+    if (error) throw error;
+    await fetchQuests(selectedCampaign!.id);
+  } catch (e: any) {
+    alert(e?.message || "Erreur lors de la suppression");
+  }
+};
+
+const fetchQuests = async (campaignId) => {
+  const { data: questsData, error: questsError } = await supabase
+    .from('quests')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .order('order_index');
+
+  if (questsError) {
+    console.error('Erreur quests:', questsError);
+    return;
+  }
+
+  // Récupérer les exercices pour chaque quête
+  const questsWithExercises = await Promise.all(
+    (questsData || []).map(async (quest) => {
+      const { data: exercises, error: exError } = await supabase
+        .from('quest_exercises')
+        .select('*')
+        .eq('quest_id', quest.id)
+        .order('order_index');
+
+      if (exError) {
+        console.error('Erreur exercises:', exError);
+      }
+
+      // ✅ Assurer que equipment_tags est un tableau
+      return {
+        ...quest,
+        equipment_tags: quest.equipment_tags || [], // ← FIX ICI AUSSI
+        exercises: exercises || []
+      };
+    })
+  );
+
+  setQuests(questsWithExercises);
+};
 
   const handleAddExercise = () => {
     if (!editingQuest) return;
@@ -322,7 +434,7 @@ const handleSaveQuest = async () => {
     });
   };
 
-  const handleRemoveExercise = (index: number) => {
+  const handleRemoveExercise = (index) => {
     if (!editingQuest) return;
     const newExercises = editingQuest.exercises.filter((_, i) => i !== index);
     setEditingQuest({
@@ -331,39 +443,66 @@ const handleSaveQuest = async () => {
     });
   };
 
-  const handleExerciseChange = (
-    index: number,
-    field: keyof Exercise,
-    value: string | number
-  ) => {
+  const handleExerciseChange = (index, field, value) => {
     if (!editingQuest) return;
     const newExercises = [...editingQuest.exercises];
     newExercises[index] = { ...newExercises[index], [field]: value };
     setEditingQuest({ ...editingQuest, exercises: newExercises });
   };
 
-  // Utilitaires
-  const getWorkoutTypeLabel = (type: string) => {
+  const getWorkoutTypeLabel = (type) => {
     switch (type) {
-      case "simple":
-        return "Simple";
-      case "for_time":
-        return "For Time";
-      case "tabata":
-        return "Tabata";
-      case "amrap":
-        return "AMRAP";
-      case "emom":
-        return "EMOM";
-      default:
-        return type;
+      case "simple": return "Simple";
+      case "for_time": return "For Time";
+      case "tabata": return "Tabata";
+      case "amrap": return "AMRAP";
+      case "emom": return "EMOM";
+      default: return type;
     }
+  };
+
+  const getLevelLabel = (level) => {
+    return LEVELS.find(l => l.value === level)?.label || level;
+  };
+
+  const getEquipmentLabel = (equipment) => {
+    return EQUIPMENT_OPTIONS.find(e => e.value === equipment)?.label || equipment;
   };
 
   const getCurrentQuests = () => {
     if (!selectedCampaign) return [];
     return quests.filter((q) => q.campaign_id === selectedCampaign.id);
   };
+
+const fetchCampaigns = async () => {
+  const { data, error } = await supabase
+    .from('campaigns')
+    .select(`
+      id, slug, title, description, is_active,
+      level_required,          
+      equipment_tags,          
+      estimated_duration_weeks 
+    `)
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.error(error);
+    alert("Erreur chargement campagnes");
+    return;
+  }
+
+  // ✅ Assurez-vous que equipment_tags est toujours un tableau
+  const cleanedData = (data || []).map(campaign => ({
+    ...campaign,
+    equipment_tags: campaign.equipment_tags || [] // ← FIX ICI
+  }));
+
+  setCampaigns(cleanedData);
+};
+
+useEffect(() => {
+  fetchCampaigns();
+}, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-6">
@@ -402,24 +541,18 @@ const handleSaveQuest = async () => {
             {!editingCampaign && (
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Gestion des Campagnes</h2>
-                <Button
-                  onClick={handleCreateCampaign}
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
+                <Button onClick={handleCreateCampaign}>
+                  <Plus className="w-4 h-4 mr-2" />
                   Nouvelle Campagne
                 </Button>
               </div>
             )}
 
-            {/* Liste des campagnes */}
-            {!editingCampaign && (
+            {/* Liste des campagnes existantes */}
+            {!editingCampaign && campaigns.length > 0 && (
               <div className="grid gap-4">
                 {campaigns.map((campaign) => (
-                  <Card
-                    key={campaign.id}
-                    className="border-accent/30 hover:shadow-lg transition-all"
-                  >
+                  <Card key={campaign.id} className="border-accent/30 hover:shadow-lg transition-all">
                     <CardHeader>
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -430,25 +563,29 @@ const handleSaveQuest = async () => {
                           <CardDescription className="mt-1">
                             {campaign.description}
                           </CardDescription>
-                          <div className="flex gap-2 mt-3">
-                            <Badge
-                              variant={
-                                campaign.is_active ? "default" : "secondary"
-                              }
-                            >
+                          <div className="flex gap-2 mt-3 flex-wrap">
+                            <Badge variant={campaign.is_active ? "default" : "secondary"}>
                               {campaign.is_active ? "Active" : "Inactive"}
                             </Badge>
                             <Badge variant="outline">
-                              {campaign.quests_count || 0} quête
-                              {(campaign.quests_count || 0) > 1 ? "s" : ""}
+                              {getLevelLabel(campaign.level_required)}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className="font-mono text-xs"
-                            >
+                            <Badge variant="outline">
+                              {campaign.estimated_duration_weeks} semaines
+                            </Badge>
+                            <Badge variant="outline" className="font-mono text-xs">
                               /{campaign.slug}
                             </Badge>
                           </div>
+                          {campaign.equipment_tags && campaign.equipment_tags.length > 0 && (
+                            <div className="flex gap-1 mt-2 flex-wrap">
+                              {campaign.equipment_tags.map(eq => (
+                                <Badge key={eq} variant="secondary" className="text-xs">
+                                  {getEquipmentLabel(eq)}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Button
@@ -470,9 +607,7 @@ const handleSaveQuest = async () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() =>
-                              campaign.id && handleDeleteCampaign(campaign.id)
-                            }
+                            onClick={() => campaign.id && handleDeleteCampaign(campaign.id)}
                             className="text-red-500 hover:bg-red-500/10"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -485,15 +620,26 @@ const handleSaveQuest = async () => {
               </div>
             )}
 
-            {/* Formulaire campagne */}
+            {/* Message si aucune campagne */}
+            {!editingCampaign && campaigns.length === 0 && (
+              <Card className="border-dashed border-muted/50">
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground mb-4">Aucune campagne créée</p>
+                  <Button onClick={handleCreateCampaign}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Créer votre première campagne
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Formulaire campagne avec filtres */}
             {editingCampaign && (
               <Card className="border-accent">
                 <CardHeader>
                   <div className="flex justify-between items-center">
                     <CardTitle>
-                      {isCreatingCampaign
-                        ? "Créer une nouvelle campagne"
-                        : "Modifier la campagne"}
+                      {isCreatingCampaign ? "Créer une nouvelle campagne" : "Modifier la campagne"}
                     </CardTitle>
                     <Button
                       variant="ghost"
@@ -509,67 +655,152 @@ const handleSaveQuest = async () => {
                 </CardHeader>
 
                 <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="campaign-name">Nom de la campagne *</Label>
-                    <Input
-                      id="campaign-name"
-                      value={editingCampaign.title}
-                      onChange={(e) =>
-                        setEditingCampaign({
-                          ...editingCampaign,
-                          title: e.target.value,
-                        })
-                      }
-                      placeholder="Ex: J'aime pas le cardio"
-                    />
+                  {/* Informations de base */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Settings className="w-4 h-4" />
+                      Informations générales
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="campaign-name">Nom de la campagne *</Label>
+                        <Input
+                          id="campaign-name"
+                          value={editingCampaign.title}
+                          onChange={(e) =>
+                            setEditingCampaign({
+                              ...editingCampaign,
+                              title: e.target.value,
+                            })
+                          }
+                          placeholder="Ex: Programme débutant"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="campaign-slug">Slug (URL)</Label>
+                        <Input
+                          id="campaign-slug"
+                          value={editingCampaign.slug}
+                          onChange={(e) =>
+                            setEditingCampaign({
+                              ...editingCampaign,
+                              slug: e.target.value,
+                            })
+                          }
+                          placeholder="programme-debutant (auto-généré si vide)"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="campaign-description">Description</Label>
+                      <Textarea
+                        id="campaign-description"
+                        value={editingCampaign.description}
+                        onChange={(e) =>
+                          setEditingCampaign({
+                            ...editingCampaign,
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="Description de la campagne"
+                        rows={3}
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="campaign-slug">Slug (URL)</Label>
-                    <Input
-                      id="campaign-slug"
-                      value={editingCampaign.slug}
-                      onChange={(e) =>
-                        setEditingCampaign({
-                          ...editingCampaign,
-                          slug: e.target.value,
-                        })
-                      }
-                      placeholder="jaime-pas-le-cardio (auto-généré si vide)"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      URL: /campaign/{editingCampaign.slug || "slug-auto"}
-                    </p>
-                  </div>
+                  {/* Filtres de ciblage */}
+                  <div className="space-y-4 border-t pt-6">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Filter className="w-4 h-4" />
+                      Paramètres de ciblage
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Niveau requis</Label>
+                        <Select
+                          value={editingCampaign.level_required}
+                          onValueChange={(value) =>
+                            setEditingCampaign({
+                              ...editingCampaign,
+                              level_required: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner un niveau" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LEVELS.map((level) => (
+                              <SelectItem key={level.value} value={level.value}>
+                                {level.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="campaign-description">Description</Label>
-                    <Textarea
-                      id="campaign-description"
-                      value={editingCampaign.description}
-                      onChange={(e) =>
-                        setEditingCampaign({
-                          ...editingCampaign,
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder="Description de la campagne"
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Durée estimée (semaines)</Label>
+                        <Input
+                          type="number"
+                          value={editingCampaign.estimated_duration_weeks}
+                          onChange={(e) =>
+                            setEditingCampaign({
+                              ...editingCampaign,
+                              estimated_duration_weeks: parseInt(e.target.value) || 4,
+                            })
+                          }
+                          placeholder="4"
+                        />
+                      </div>
 
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="campaign-active"
-                      checked={editingCampaign.is_active}
-                      onChange={(e) =>
-                        setEditingCampaign({
-                          ...editingCampaign,
-                          is_active: e.target.checked,
-                        })
-                      }
-                    />
-                    <Label htmlFor="campaign-active">Campagne active</Label>
+                      <div className="flex items-center space-x-2 pt-7">
+                        <input
+                          type="checkbox"
+                          id="campaign-active"
+                          checked={editingCampaign.is_active}
+                          onChange={(e) =>
+                            setEditingCampaign({
+                              ...editingCampaign,
+                              is_active: e.target.checked,
+                            })
+                          }
+                          className="rounded"
+                        />
+                        <Label htmlFor="campaign-active">Campagne active</Label>
+                      </div>
+                    </div>
+
+                    {/* Équipements requis */}
+                    <div className="space-y-3">
+                      <Label>Équipements requis</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {EQUIPMENT_OPTIONS.map((equipment) => (
+                          <div key={equipment.value} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`equipment-${equipment.value}`}
+                              checked={editingCampaign.equipment_tags?.includes(equipment.value)}
+                              onChange={() => handleEquipmentToggle(equipment.value, false)}
+                              className="rounded"
+                            />
+                            <Label 
+                              htmlFor={`equipment-${equipment.value}`}
+                              className="text-sm"
+                            >
+                              {equipment.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Les utilisateurs devront avoir au moins un de ces équipements
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex gap-3 pt-4 border-t">
@@ -616,18 +847,15 @@ const handleSaveQuest = async () => {
                     </p>
                   </div>
                 </div>
-                <Button
-                  onClick={handleCreateQuest}
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
+                <Button onClick={handleCreateQuest}>
+                  <Plus className="w-4 h-4 mr-2" />
                   Nouvelle Quête
                 </Button>
               </div>
             )}
 
-            {/* Liste des quêtes (code existant adapté) */}
-            {selectedCampaign && !editingQuest && (
+            {/* Liste des quêtes existantes */}
+            {selectedCampaign && !editingQuest && getCurrentQuests().length > 0 && (
               <div className="grid gap-4">
                 {getCurrentQuests().map((quest) => (
                   <Card key={quest.id} className="border-accent/30">
@@ -653,9 +881,7 @@ const handleSaveQuest = async () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() =>
-                              quest.id && handleDeleteQuest(quest.id)
-                            }
+                            onClick={() => quest.id && handleDeleteQuest(quest.id)}
                             className="text-red-500 hover:bg-red-500/10"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -675,12 +901,20 @@ const handleSaveQuest = async () => {
                         <Badge variant="secondary">
                           Ordre: {quest.order_index}
                         </Badge>
+                        <Badge variant="outline">
+                          {getLevelLabel(quest.level_required)}
+                        </Badge>
+                        {quest.is_one_shot && (
+                          <Badge variant="outline" className="text-blue-600">
+                            One-shot
+                          </Badge>
+                        )}
                       </div>
                     </CardHeader>
 
                     <CardContent className="space-y-4">
                       {/* Détails workout */}
-                      <div className="flex gap-4 text-sm text-muted-foreground">
+                      <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
                         {quest.workout_type === "tabata" && (
                           <div className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
@@ -699,7 +933,27 @@ const handleSaveQuest = async () => {
                             {quest.total_minutes} min
                           </div>
                         )}
+                        {quest.estimated_duration_minutes && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            ~{quest.estimated_duration_minutes} min
+                          </div>
+                        )}
                       </div>
+
+                      {/* Équipements */}
+                      {quest.equipment_tags && quest.equipment_tags.length > 0 && (
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Équipements requis</h4>
+                          <div className="flex gap-2 flex-wrap">
+                            {quest.equipment_tags.map((equipment, i) => (
+                              <Badge key={i} variant="secondary" className="text-xs">
+                                {getEquipmentLabel(equipment)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Exercices */}
                       <div>
@@ -710,8 +964,7 @@ const handleSaveQuest = async () => {
                           {quest.exercises.map((exercise, i) => (
                             <Badge key={i} variant="outline">
                               {exercise.name}{" "}
-                              {exercise.target_reps > 0 &&
-                                `(${exercise.target_reps})`}
+                              {exercise.target_reps > 0 && `(${exercise.target_reps})`}
                             </Badge>
                           ))}
                         </div>
@@ -719,29 +972,19 @@ const handleSaveQuest = async () => {
 
                       {/* XP */}
                       <div>
-                        <h4 className="font-semibold text-sm mb-2">
-                          Récompenses XP
-                        </h4>
+                        <h4 className="font-semibold text-sm mb-2">Récompenses XP</h4>
                         <div className="flex gap-3 text-sm">
                           {quest.xp_force > 0 && (
-                            <span className="text-red-500">
-                              💪 {quest.xp_force}
-                            </span>
+                            <span className="text-red-500">💪 {quest.xp_force}</span>
                           )}
                           {quest.xp_endurance > 0 && (
-                            <span className="text-green-500">
-                              🏃 {quest.xp_endurance}
-                            </span>
+                            <span className="text-green-500">🏃 {quest.xp_endurance}</span>
                           )}
                           {quest.xp_agilite > 0 && (
-                            <span className="text-blue-500">
-                              ⚡ {quest.xp_agilite}
-                            </span>
+                            <span className="text-blue-500">⚡ {quest.xp_agilite}</span>
                           )}
                           {quest.xp_mental > 0 && (
-                            <span className="text-purple-500">
-                              🧠 {quest.xp_mental}
-                            </span>
+                            <span className="text-purple-500">🧠 {quest.xp_mental}</span>
                           )}
                         </div>
                       </div>
@@ -751,15 +994,26 @@ const handleSaveQuest = async () => {
               </div>
             )}
 
-            {/* Formulaire quête (code existant inchangé mais conditionné) */}
+            {/* Message si aucune quête */}
+            {selectedCampaign && !editingQuest && getCurrentQuests().length === 0 && (
+              <Card className="border-dashed border-muted/50">
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground mb-4">Aucune quête dans cette campagne</p>
+                  <Button onClick={handleCreateQuest}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Créer votre première quête
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Formulaire quête avec filtres */}
             {editingQuest && (
               <Card className="border-accent">
                 <CardHeader>
                   <div className="flex justify-between items-center">
                     <CardTitle>
-                      {isCreatingQuest
-                        ? "Créer une nouvelle quête"
-                        : "Modifier la quête"}
+                      {isCreatingQuest ? "Créer une nouvelle quête" : "Modifier la quête"}
                     </CardTitle>
                     <Button
                       variant="ghost"
@@ -773,78 +1027,87 @@ const handleSaveQuest = async () => {
                     </Button>
                   </div>
                 </CardHeader>
+
                 <CardContent className="space-y-6">
                   {/* Informations de base */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Titre de la quête *</Label>
-                      <Input
-                        value={editingQuest.title}
-                        onChange={(e) =>
-                          setEditingQuest({
-                            ...editingQuest,
-                            title: e.target.value,
-                          })
-                        }
-                        placeholder="Ex: Cardio de l'enfer"
-                      />
+                  <div className="space-y-4">
+                    <h3 className="font-semibold">Informations générales</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Titre de la quête *</Label>
+                        <Input
+                          value={editingQuest.title}
+                          onChange={(e) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              title: e.target.value,
+                            })
+                          }
+                          placeholder="Ex: Cardio de l'enfer"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Type de workout</Label>
+                        <Select
+                          value={editingQuest.workout_type}
+                          onValueChange={(value) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              workout_type: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="simple">Simple</SelectItem>
+                            <SelectItem value="for_time">For Time</SelectItem>
+                            <SelectItem value="tabata">Tabata</SelectItem>
+                            <SelectItem value="amrap">AMRAP</SelectItem>
+                            <SelectItem value="emom">EMOM</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Type de quête</Label>
+                        <Select
+                          value={editingQuest.type}
+                          onValueChange={(value) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              type: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="quete">Normal</SelectItem>
+                            <SelectItem value="boss">Boss</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Ordre d'affichage</Label>
+                        <Input
+                          type="number"
+                          value={editingQuest.order_index}
+                          onChange={(e) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              order_index: parseInt(e.target.value) || 1,
+                            })
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Type de workout</Label>
-                      <Select
-                        value={editingQuest.workout_type}
-                        onValueChange={(value) =>
-                          setEditingQuest({
-                            ...editingQuest,
-                            workout_type: value as Quest["workout_type"],
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner un type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="simple">Simple</SelectItem>
-                          <SelectItem value="for_time">For Time</SelectItem>
-                          <SelectItem value="tabata">Tabata</SelectItem>
-                          <SelectItem value="amrap">AMRAP</SelectItem>
-                          <SelectItem value="emom">EMOM</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Type de quête</Label>
-                      <Select
-                        value={editingQuest.type}
-                        onValueChange={(value) =>
-                          setEditingQuest({
-                            ...editingQuest,
-                            type: value as Quest["type"],
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner un type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="quete">Normal</SelectItem>
-                          <SelectItem value="boss">Boss</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Ordre d'affichage</Label>
-                      <Input
-                        type="number"
-                        value={editingQuest.order_index}
-                        onChange={(e) =>
-                          setEditingQuest({
-                            ...editingQuest,
-                            order_index: parseInt(e.target.value) || 1,
-                          })
-                        }
-                      />
-                    </div>
+
                     <div className="space-y-2">
                       <Label>Description</Label>
                       <Textarea
@@ -856,60 +1119,176 @@ const handleSaveQuest = async () => {
                           })
                         }
                         placeholder="Description de la quête"
+                        rows={3}
                       />
                     </div>
                   </div>
 
-                  {/* Paramètres workout selon le type */}
-                  {(editingQuest.workout_type === "tabata" ||
-                    editingQuest.workout_type === "emom") && (
-                    <div className="grid grid-cols-2 gap-4">
+                  {/* Filtres de ciblage pour les quêtes */}
+                  <div className="space-y-4 border-t pt-6">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Filter className="w-4 h-4" />
+                      Paramètres de ciblage
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label>Secondes de travail</Label>
+                        <Label>Niveau requis</Label>
+                        <Select
+                          value={editingQuest.level_required}
+                          onValueChange={(value) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              level_required: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LEVELS.map((level) => (
+                              <SelectItem key={level.value} value={level.value}>
+                                {level.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Durée estimée (minutes)</Label>
                         <Input
                           type="number"
-                          value={editingQuest.work_seconds}
+                          value={editingQuest.estimated_duration_minutes}
                           onChange={(e) =>
                             setEditingQuest({
                               ...editingQuest,
-                              work_seconds: parseInt(e.target.value) || 0,
+                              estimated_duration_minutes: parseInt(e.target.value) || 30,
                             })
                           }
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Secondes de repos</Label>
-                        <Input
-                          type="number"
-                          value={editingQuest.rest_seconds}
-                          onChange={(e) =>
-                            setEditingQuest({
-                              ...editingQuest,
-                              rest_seconds: parseInt(e.target.value) || 0,
-                            })
-                          }
-                        />
+
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="quest-oneshot"
+                            checked={editingQuest.is_one_shot}
+                            onChange={(e) =>
+                              setEditingQuest({
+                                ...editingQuest,
+                                is_one_shot: e.target.checked,
+                              })
+                            }
+                            className="rounded"
+                          />
+                          <Label htmlFor="quest-oneshot" className="text-sm">One-shot</Label>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="quest-published"
+                            checked={editingQuest.is_published}
+                            onChange={(e) =>
+                              setEditingQuest({
+                                ...editingQuest,
+                                is_published: e.target.checked,
+                              })
+                            }
+                            className="rounded"
+                          />
+                          <Label htmlFor="quest-published" className="text-sm">Publié</Label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Équipements requis pour les quêtes */}
+                    <div className="space-y-3">
+                      <Label>Équipements requis</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {EQUIPMENT_OPTIONS.map((equipment) => (
+                          <div key={equipment.value} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`quest-equipment-${equipment.value}`}
+                              checked={editingQuest.equipment_tags?.includes(equipment.value)}
+                              onChange={() => handleEquipmentToggle(equipment.value, true)}
+                              className="rounded"
+                            />
+                            <Label 
+                              htmlFor={`quest-equipment-${equipment.value}`}
+                              className="text-sm"
+                            >
+                              {equipment.label}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Paramètres workout selon le type */}
+                  {(editingQuest.workout_type === "tabata" || editingQuest.workout_type === "emom") && (
+                    <div className="space-y-4 border-t pt-6">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Paramètres de timing
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Secondes de travail</Label>
+                          <Input
+                            type="number"
+                            value={editingQuest.work_seconds}
+                            onChange={(e) =>
+                              setEditingQuest({
+                                ...editingQuest,
+                                work_seconds: parseInt(e.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Secondes de repos</Label>
+                          <Input
+                            type="number"
+                            value={editingQuest.rest_seconds}
+                            onChange={(e) =>
+                              setEditingQuest({
+                                ...editingQuest,
+                                rest_seconds: parseInt(e.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
 
                   {editingQuest.workout_type === "for_time" && (
-                    <div className="space-y-2">
-                      <Label>Nombre de tours</Label>
-                      <Input
-                        type="number"
-                        value={editingQuest.rounds_target}
-                        onChange={(e) =>
-                          setEditingQuest({
-                            ...editingQuest,
-                            rounds_target: parseInt(e.target.value) || 0,
-                          })
-                        }
-                      />
+                    <div className="space-y-4 border-t pt-6">
+                      <h3 className="font-semibold">Paramètres For Time</h3>
+                      <div className="space-y-2">
+                        <Label>Nombre de tours</Label>
+                        <Input
+                          type="number"
+                          value={editingQuest.rounds_target}
+                          onChange={(e) =>
+                            setEditingQuest({
+                              ...editingQuest,
+                              rounds_target: parseInt(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
                     </div>
                   )}
+
                   {/* Minutes totales */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 border-t pt-6">
                     <Label>Minutes totales</Label>
                     <Input
                       type="number"
@@ -924,8 +1303,8 @@ const handleSaveQuest = async () => {
                   </div>
 
                   {/* Récompenses XP */}
-                  <div>
-                    <h4 className="font-semibold mb-3">Récompenses XP</h4>
+                  <div className="space-y-4 border-t pt-6">
+                    <h4 className="font-semibold">Récompenses XP</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label className="text-red-500">💪 Force</Label>
@@ -983,8 +1362,8 @@ const handleSaveQuest = async () => {
                   </div>
 
                   {/* Exercices */}
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
+                  <div className="space-y-4 border-t pt-6">
+                    <div className="flex justify-between items-center">
                       <h4 className="font-semibold">
                         Exercices ({editingQuest.exercises.length})
                       </h4>
@@ -997,19 +1376,16 @@ const handleSaveQuest = async () => {
                         Ajouter
                       </Button>
                     </div>
+                    
                     <div className="space-y-4">
                       {editingQuest.exercises.map((exercise, index) => (
-                        <div key={index} className="flex gap-4 items-end">
+                        <div key={index} className="flex gap-4 items-end p-4 border rounded-lg">
                           <div className="flex-1 space-y-2">
                             <Label>Nom de l'exercice</Label>
                             <Input
                               value={exercise.name}
                               onChange={(e) =>
-                                handleExerciseChange(
-                                  index,
-                                  "name",
-                                  e.target.value
-                                )
+                                handleExerciseChange(index, "name", e.target.value)
                               }
                               placeholder="Ex: Pompes"
                             />
@@ -1028,6 +1404,16 @@ const handleSaveQuest = async () => {
                               }
                             />
                           </div>
+                          <div className="w-32 space-y-2">
+                            <Label>Notes</Label>
+                            <Input
+                              value={exercise.notes || ""}
+                              onChange={(e) =>
+                                handleExerciseChange(index, "notes", e.target.value)
+                              }
+                              placeholder="Optionnel"
+                            />
+                          </div>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1038,6 +1424,12 @@ const handleSaveQuest = async () => {
                           </Button>
                         </div>
                       ))}
+                      
+                      {editingQuest.exercises.length === 0 && (
+                        <div className="text-center p-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                          Aucun exercice ajouté
+                        </div>
+                      )}
                     </div>
                   </div>
 
