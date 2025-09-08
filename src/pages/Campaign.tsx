@@ -83,6 +83,9 @@ export default function Campaign() {
       case 'available': 
       case 'unlocked': return 'bg-blue-500/20 text-blue-500 border-blue-500/30'
       case 'locked': return 'bg-muted/20 text-muted-foreground border-muted/30'
+      case 'done': return 'bg-green-500/20 text-green-500 border-green-500/30'
+      case 'in_progress': return 'bg-orange-500/20 text-orange-500 border-orange-500/30'
+      case 'todo': return 'bg-blue-500/20 text-blue-500 border-blue-500/30'
       default: return 'bg-muted/20 text-muted-foreground border-muted/30'
     }
   }
@@ -93,6 +96,9 @@ export default function Campaign() {
       case 'available':
       case 'unlocked': return '🎯 Disponible'
       case 'locked': return '🔒 Verrouillée'
+      case 'done': return '✅ Terminée'
+      case 'in_progress': return '🔄 En cours'
+      case 'todo': return '📝 À faire'
       default: return status
     }
   }
@@ -122,19 +128,19 @@ export default function Campaign() {
     )
   }
 
-  const completedQuests = quests.filter(q => q.status === 'completed').length
+  const completedQuests = quests.filter(q => q?.user_status === 'done').length
 
   console.log('Campaign - Quests received:', quests) // AJOUTEZ
   console.log('Campaign - First quest:', quests[0]) // AJOUTEZ
 
   const isQuestAvailable = (quest, index) => {
     // La première quête est toujours disponible
-    if (index === 0) return quest.status !== 'completed' ? 'unlocked' : 'completed'
+    if (index === 0) return quest.user_status !== 'done' ? 'unlocked' : 'done'
     
     // Les autres quêtes sont disponibles si la précédente est complétée
     const previousQuest = quests[index - 1]
-    if (previousQuest?.status === 'completed') {
-      return quest.status !== 'completed' ? 'unlocked' : 'completed'
+    if (previousQuest?.user_status === 'done') {
+      return quest.user_status !== 'done' ? 'unlocked' : 'done'
     }
     
     return 'locked'
@@ -177,7 +183,7 @@ export default function Campaign() {
               <Card 
                 key={quest.id} 
                 className={`border transition-all ${
-                  questStatus === 'completed' 
+                  questStatus === 'done' 
                     ? 'border-green-500/30 bg-green-500/5' 
                     : questStatus === 'unlocked'
                     ? 'border-accent/30 shadow-lg hover:shadow-xl cursor-pointer'
@@ -307,7 +313,7 @@ export default function Campaign() {
                     </Button>
                   )}
                   
-                  {questStatus === 'completed' && (
+                  {questStatus === 'done' && (
                     <div className="text-center py-2 text-green-500 font-medium">
                       ✅ Quête terminée !
                     </div>
@@ -339,7 +345,10 @@ export default function Campaign() {
                 <div>Campaign loading: {campaignLoading ? 'Yes' : 'No'}</div>
                 <div>Quests loading: {questsLoading ? 'Yes' : 'No'}</div>
                 {quests.length > 0 && (
-                  <div>Quest statuses: {JSON.stringify(quests.map(q => ({ title: q.title, status: q.status })))}</div>
+                 <div>Quest statuses: {JSON.stringify(quests.map(q => ({ 
+    title: q?.title, 
+    user_status: q?.user_status 
+  })))}</div>
                 )}
               </div>
             </CardContent>

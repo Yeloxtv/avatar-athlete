@@ -1,3 +1,5 @@
+// FILE: src/pages/Training.tsx  (REMPLACEMENT COMPLET DU FICHIER)
+
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
@@ -14,6 +16,7 @@ import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
 import { LevelDisplay } from '@/components/ui/level-display'
 import { RewardResult } from '@/types/rpg'
 
+
 interface SessionSummary {
   rounds: number
   totalTime: number
@@ -29,8 +32,9 @@ interface RoundTime {
 export default function Training() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
-  const { profile, updateProfile } = useProfile()
+  const { profile } = useProfile()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
+
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
   const [session, setSession] = useState<WorkoutSession | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -48,43 +52,58 @@ export default function Training() {
   const [loading, setLoading] = useState(true)
   const [roundTimes, setRoundTimes] = useState<RoundTime[]>([])
   const [roundStartTime, setRoundStartTime] = useState<number>(0)
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const intervalRef = useRef<number | null>(null) // ✅ navigateur → number
 
+  // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
-    if (questId && profile) {
-      fetchQuest()
+    if (questId && profile?.user_id) {
+      void fetchQuest()
     }
-  }, [questId, profile])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questId, profile?.user_id])
 
+  // ------------------------ TIMER -----------------------------
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
 
     if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setTime(prev => prev + 1)
-        
+      intervalRef.current = window.setInterval(() => {
+        // incrémente le temps et vérifie AMRAP avec la valeur fraîche
+        setTime(prevTime => {
+          const nextTime = prevTime + 1
+          if (quest?.workout_type === 'amrap' && (quest?.total_minutes ?? 0) > 0) {
+            if (nextTime >= (quest.total_minutes! * 60)) {
+              finishWorkout()
+            }
+          }
+          return nextTime
+        })
+
+        // logique TABATA protégée par défauts
         if (quest?.workout_type === 'tabata') {
           setWorkTime(prev => {
+            const work = quest?.work_seconds ?? 20
+            const rest = quest?.rest_seconds ?? 10
+            const roundsTarget = quest?.rounds_target ?? 0
+
             const newTime = prev + 1
-            const cycleDuration = quest.work_seconds + quest.rest_seconds
-            const currentCycleTime = newTime % cycleDuration
-            
-            if (currentCycleTime === 0 && newTime > 0) {
-              setExerciseIndex(prev => (prev + 1) % quest.exercises.length)
-              if ((newTime / cycleDuration) >= quest.rounds_target) {
+            const cycleDuration = work + rest
+            const currentCycleTime = cycleDuration > 0 ? newTime % cycleDuration : 0
+
+            if (cycleDuration > 0 && currentCycleTime === 0 && newTime > 0) {
+              const exLen = Math.max(quest?.exercises?.length ?? 0, 1)
+              setExerciseIndex(prevIdx => (prevIdx + 1) % exLen)
+              if (roundsTarget > 0 && (newTime / cycleDuration) >= roundsTarget) {
                 finishWorkout()
               }
             }
-            
-            setIsWorkPhase(currentCycleTime < quest.work_seconds)
+
+            setIsWorkPhase(currentCycleTime < work)
             return newTime
           })
-        } else if (quest?.workout_type === 'amrap' && quest.total_minutes > 0) {
-          if (time >= quest.total_minutes * 60) {
-            finishWorkout()
-          }
         }
       }, 1000)
     }
@@ -92,51 +111,49 @@ export default function Training() {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
-  }, [isRunning, quest])
+  }, [isRunning, quest]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchQuest = async () => {
-    if (!questId || !profile) return
-
+    if (!questId || !profile?.user_id) return
     try {
-      // Check if quest is available
-      const { data: userQuest, error: userQuestError } = await supabase
+      // 1) user_quests: pas de blocage si pas de ligne (0 == quête non encore commencée)
+      const { error: uqErr } = await supabase
         .from('user_quests')
         .select('status')
         .eq('user_id', profile.user_id)
         .eq('quest_id', questId)
-        .single()
+        .limit(1)
+      if (uqErr) console.warn('user_quests check:', uqErr)
 
-      if (userQuestError || userQuest?.status !== 'available') {
-        toast({
-          title: "Quête non disponible",
-          description: "Cette quête n'est pas encore débloquée",
-          variant: "destructive",
-        })
-        navigate('/campaign')
-        return
-      }
-
-      // Fetch quest details
-      const { data: questData, error: questError } = await supabase
+      // 2) quest + exercises (safeSingle)
+      const { data: questRows, error: questError } = await supabase
         .from('quests')
         .select(`
           *,
-          quest_exercises(*)
+          quest_exercises(
+            id,
+            name,
+            target_reps,
+            order_index,
+            notes
+          )
         `)
         .eq('id', questId)
-        .single()
-
+        .limit(1)
       if (questError) throw questError
+      const row = questRows?.[0]
+      if (!row) throw new Error('Quest not found')
 
       setQuest({
-        ...questData,
-        exercises: questData.quest_exercises || []
+        ...(row as any),
+        exercises: (row as any).quest_exercises ?? []
       })
 
-      // Check for existing session
-      const { data: existingSession } = await supabase
+      // 3) reprise de session (safeSingle)
+      const { data: sessions, error: sessErr } = await supabase
         .from('workout_sessions')
         .select('*')
         .eq('user_id', profile.user_id)
@@ -144,34 +161,34 @@ export default function Training() {
         .eq('is_completed', false)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
-
-      if (existingSession) {
-        setSession(existingSession)
-        setTime(existingSession.total_time_seconds)
-        setRounds(existingSession.rounds_completed)
-        toast({
-          title: "Session reprise",
-          description: "Votre session précédente a été restaurée",
-        })
+      if (!sessErr) {
+        const existingSession = sessions?.[0]
+        if (existingSession) {
+          setSession(existingSession)
+          setTime(existingSession.total_time_seconds ?? 0)
+          setRounds(existingSession.rounds_completed ?? 0)
+          toast({
+            title: 'Session reprise',
+            description: 'Votre session précédente a été restaurée',
+          })
+        }
       }
-
     } catch (error) {
       console.error('Error fetching quest:', error)
       toast({
-        title: "Erreur",
-        description: "Impossible de charger la quête",
-        variant: "destructive",
+        title: 'Erreur',
+        description: 'Impossible de charger la quête',
+        variant: 'destructive',
       })
-      navigate('/campaign')
     } finally {
       setLoading(false)
     }
   }
 
+  // ------------------------ CONTROLS --------------------------
   const startCountdown = () => {
     setCountdown(3)
-    const countdownInterval = setInterval(() => {
+    const countdownInterval = window.setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(countdownInterval)
@@ -185,8 +202,20 @@ export default function Training() {
 
   const startWorkout = async () => {
     if (!quest || !profile) return
-
     try {
+      // upsert état utilisateur "in_progress"
+      await supabase
+        .from('user_quests')
+        .upsert(
+          {
+            user_id: profile.user_id,
+            quest_id: quest.id,
+            status: 'in_progress',
+            started_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,quest_id' }
+        )
+
       if (!session) {
         const { data: newSession, error } = await supabase
           .from('workout_sessions')
@@ -196,10 +225,9 @@ export default function Training() {
             workout_type: quest.workout_type,
           })
           .select()
-          .single()
-
+          .maybeSingle()
         if (error) throw error
-        setSession(newSession)
+        if (newSession) setSession(newSession)
       }
 
       setRoundStartTime(time)
@@ -207,16 +235,16 @@ export default function Training() {
     } catch (error) {
       console.error('Error starting workout:', error)
       toast({
-        title: "Erreur",
+        title: 'Erreur',
         description: "Impossible de démarrer l'entraînement",
-        variant: "destructive",
+        variant: 'destructive',
       })
     }
   }
 
   const pauseWorkout = () => {
     setIsRunning(false)
-    saveSession()
+    void saveSession()
   }
 
   const resetWorkout = async () => {
@@ -229,10 +257,7 @@ export default function Training() {
     setExerciseIndex(0)
 
     if (session) {
-      await supabase
-        .from('workout_sessions')
-        .delete()
-        .eq('id', session.id)
+      await supabase.from('workout_sessions').delete().eq('id', session.id)
       setSession(null)
     }
   }
@@ -240,31 +265,27 @@ export default function Training() {
   const addRound = async () => {
     const currentTime = time
     const roundDuration = roundStartTime > 0 ? currentTime - roundStartTime : currentTime
-    
+
     const newRounds = rounds + 1
     setRounds(newRounds)
     setCurrentRound(newRounds + 1)
-    
-    // Add round time to history
+
     const newRoundTime: RoundTime = {
       roundNumber: newRounds,
       duration: roundDuration,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }
     setRoundTimes(prev => [...prev, newRoundTime])
     setRoundStartTime(currentTime)
 
     if (session) {
-      await supabase
-        .from('session_rounds')
-        .insert({
-          session_id: session.id,
-          round_no: newRounds,
-          duration_seconds: roundDuration,
-          reps_total: quest?.exercises.reduce((sum, ex) => sum + ex.target_reps, 0) || 0
-        })
-
-      saveSession()
+      await supabase.from('session_rounds').insert({
+        session_id: session.id,
+        round_no: newRounds,
+        duration_seconds: roundDuration,
+        reps_total: quest?.exercises.reduce((sum, ex) => sum + (ex.target_reps ?? 0), 0) || 0,
+      })
+      void saveSession()
     }
 
     toast({
@@ -275,7 +296,6 @@ export default function Training() {
 
   const saveSession = async () => {
     if (!session) return
-
     await supabase
       .from('workout_sessions')
       .update({
@@ -290,16 +310,14 @@ export default function Training() {
     setSessionSummary({
       rounds,
       totalTime: time,
-      questTitle: quest?.title
+      questTitle: quest?.title,
     })
     setShowSummary(true)
   }
 
   const validateWorkout = async () => {
     if (!quest || !profile || !session || isProcessingRewards) return
-
     try {
-      // Mark session as completed
       await supabase
         .from('workout_sessions')
         .update({
@@ -310,21 +328,24 @@ export default function Training() {
         })
         .eq('id', session.id)
 
-      // Mark quest as completed
       await supabase
         .from('user_quests')
         .update({
-          status: 'completed',
-          completed_at: new Date().toISOString()
+          status: 'done',
+          completed_at: new Date().toISOString(),
         })
         .eq('user_id', profile.user_id)
         .eq('quest_id', quest.id)
 
-      // Process RPG rewards
       const rewards = await processWorkoutRewards({
         durationMin: Math.ceil(time / 60),
         workoutType: quest.workout_type,
-        intensity: rounds >= quest.rounds_target ? 'HIGH' : rounds >= quest.rounds_target * 0.7 ? 'MEDIUM' : 'LOW'
+        intensity:
+          rounds >= (quest.rounds_target ?? 0)
+            ? 'HIGH'
+            : rounds >= Math.ceil((quest.rounds_target ?? 0) * 0.7)
+            ? 'MEDIUM'
+            : 'LOW',
       })
 
       if (rewards) {
@@ -332,44 +353,40 @@ export default function Training() {
         setShowRewardsModal(true)
       }
 
-      // Log XP audit
-      await supabase
-        .from('audit_xp')
-        .insert({
-          user_id: profile.user_id,
-          quest_id: quest.id,
-          delta_force: quest.xp_force,
-          delta_endurance: quest.xp_endurance,
-          delta_agilite: quest.xp_agilite,
-          delta_mental: quest.xp_mental,
-          delta_total: quest.xp_total,
-        })
+      await supabase.from('audit_xp').insert({
+        user_id: profile.user_id,
+        quest_id: quest.id,
+        delta_force: quest.xp_force,
+        delta_endurance: quest.xp_endurance,
+        delta_agilite: quest.xp_agilite,
+        delta_mental: quest.xp_mental,
+        // Si xp_total n'existe pas dans ta table, retire cette ligne :
+        delta_total: (quest as any).xp_total ?? quest.xp_force + quest.xp_endurance + quest.xp_agilite + quest.xp_mental,
+      })
 
-      // Unlock next quest
       const { data: nextQuest } = await supabase
         .from('quests')
         .select('id')
         .eq('campaign_id', quest.campaign_id)
         .eq('order_index', quest.order_index + 1)
-        .single()
+        .maybeSingle() // safe
 
       if (nextQuest) {
         await supabase
           .from('user_quests')
-          .update({ status: 'available' })
+          // ⚠️ mets ici une valeur permise par ton enum/constraint
+          .update({ status: 'todo' })
           .eq('user_id', profile.user_id)
           .eq('quest_id', nextQuest.id)
       }
 
-      // Check for badge unlocks
       await checkBadgeUnlocks()
-
     } catch (error) {
       console.error('Error validating workout:', error)
       toast({
-        title: "Erreur",
+        title: 'Erreur',
         description: "Impossible de valider l'entraînement",
-        variant: "destructive",
+        variant: 'destructive',
       })
     }
   }
@@ -383,66 +400,52 @@ export default function Training() {
   const checkBadgeUnlocks = async () => {
     if (!profile || !quest) return
 
-    // Check completed sessions count
     const { data: completedSessions } = await supabase
       .from('user_quests')
       .select('id')
       .eq('user_id', profile.user_id)
       .eq('status', 'completed')
+    const completedCount = (completedSessions?.length || 0) + 1
 
-    const completedCount = (completedSessions?.length || 0) + 1 // +1 for current quest
-
-    // Check min_sessions badge
     if (completedCount >= 3) {
       const { data: badge } = await supabase
         .from('badges')
         .select('id')
         .eq('slug', 'novice-sans-cardio')
-        .single()
-
+        .maybeSingle()
       if (badge) {
-        await supabase
-          .from('user_badges')
-          .upsert({
-            user_id: profile.user_id,
-            badge_id: badge.id
-          })
+        await supabase.from('user_badges').upsert({
+          user_id: profile.user_id,
+          badge_id: badge.id,
+        })
       }
     }
 
-    // Check superset badge
     if (quest.title.toLowerCase().includes('superset')) {
       const { data: badge } = await supabase
         .from('badges')
         .select('id')
         .eq('slug', 'superset-slayer')
-        .single()
-
+        .maybeSingle()
       if (badge) {
-        await supabase
-          .from('user_badges')
-          .upsert({
-            user_id: profile.user_id,
-            badge_id: badge.id
-          })
+        await supabase.from('user_badges').upsert({
+          user_id: profile.user_id,
+          badge_id: badge.id,
+        })
       }
     }
 
-    // Check final boss badge
     if (quest.title.toLowerCase().includes('boss final')) {
       const { data: badge } = await supabase
         .from('badges')
         .select('id')
         .eq('slug', 'boss-final-vaincu')
-        .single()
-
+        .maybeSingle()
       if (badge) {
-        await supabase
-          .from('user_badges')
-          .upsert({
-            user_id: profile.user_id,
-            badge_id: badge.id
-          })
+        await supabase.from('user_badges').upsert({
+          user_id: profile.user_id,
+          badge_id: badge.id,
+        })
       }
     }
   }
@@ -464,6 +467,7 @@ export default function Training() {
     }
   }
 
+  // ------------------------ RENDER ----------------------------
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center">
@@ -481,9 +485,7 @@ export default function Training() {
         <div className="text-center space-y-4">
           <div className="text-6xl">❌</div>
           <p className="text-muted-foreground">Quête introuvable</p>
-          <Button onClick={() => navigate('/campaign')}>
-            Retour aux quêtes
-          </Button>
+          <Button onClick={() => navigate('/campaign')}>Retour aux quêtes</Button>
         </div>
       </div>
     )
@@ -494,11 +496,7 @@ export default function Training() {
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => navigate('/campaign')}
-          >
+          <Button variant="ghost" size="icon" onClick={() => navigate('/campaign')}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-1">
@@ -507,13 +505,9 @@ export default function Training() {
               {quest.title}
             </h1>
             <div className="flex gap-2 mt-1">
-              <Badge variant="outline">
-                {getWorkoutTypeLabel(quest.workout_type)}
-              </Badge>
+              <Badge variant="outline">{getWorkoutTypeLabel(quest.workout_type)}</Badge>
               {quest.type === 'boss' && (
-                <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">
-                  Boss Fight
-                </Badge>
+                <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Boss Fight</Badge>
               )}
             </div>
           </div>
@@ -529,9 +523,7 @@ export default function Training() {
         {countdown > 0 && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
             <div className="text-center">
-              <div className="text-8xl font-bold text-white animate-pulse">
-                {countdown}
-              </div>
+              <div className="text-8xl font-bold text-white animate-pulse">{countdown}</div>
               <p className="text-white text-xl mt-4">Prépare-toi !</p>
             </div>
           </div>
@@ -540,74 +532,50 @@ export default function Training() {
         {/* Timer & Controls */}
         <Card className="border-accent/30 shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl font-mono">
-              {formatTime(time)}
-            </CardTitle>
+            <CardTitle className="text-4xl font-mono">{formatTime(time)}</CardTitle>
             {quest.workout_type === 'tabata' && (
               <div className="space-y-2">
-                <div className="text-lg font-semibold">
-                  {isWorkPhase ? '🔥 TRAVAIL' : '😌 REPOS'}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Exercice: {quest.exercises[exerciseIndex]?.name}
-                </div>
-                <Progress 
-                  value={isWorkPhase ? 
-                    ((workTime % (quest.work_seconds + quest.rest_seconds)) / quest.work_seconds) * 100 :
-                    (((workTime % (quest.work_seconds + quest.rest_seconds)) - quest.work_seconds) / quest.rest_seconds) * 100
-                  } 
-                  className="h-2" 
+                <div className="text-lg font-semibold">{isWorkPhase ? '🔥 TRAVAIL' : '😌 REPOS'}</div>
+                <div className="text-sm text-muted-foreground">Exercice: {quest.exercises[exerciseIndex]?.name}</div>
+                <Progress
+                  value={
+                    isWorkPhase
+                      ? ((workTime % (quest.work_seconds + quest.rest_seconds)) / (quest.work_seconds || 1)) * 100
+                      : (((workTime % (quest.work_seconds + quest.rest_seconds)) - quest.work_seconds) / (quest.rest_seconds || 1)) * 100
+                  }
+                  className="h-2"
                 />
               </div>
             )}
-            {quest.workout_type === 'amrap' && quest.total_minutes > 0 && (
+            {quest.workout_type === 'amrap' && (quest.total_minutes ?? 0) > 0 && (
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">
-                  Temps restant: {formatTime(quest.total_minutes * 60 - time)}
+                  Temps restant: {formatTime(Math.max(quest.total_minutes! * 60 - time, 0))}
                 </div>
-                <Progress 
-                  value={(time / (quest.total_minutes * 60)) * 100} 
-                  className="h-2" 
-                />
+                <Progress value={(time / (quest.total_minutes! * 60)) * 100} className="h-2" />
               </div>
             )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-center gap-4">
               {!isRunning && time === 0 ? (
-                <Button 
-                  onClick={startWorkout}
-                  size="lg"
-                  className="bg-green-600 hover:bg-green-700"
-                >
+                <Button onClick={startWorkout} size="lg" className="bg-green-600 hover:bg-green-700">
                   <Play className="w-5 h-5 mr-2" />
                   Commencer
                 </Button>
               ) : !isRunning ? (
-                <Button 
-                  onClick={() => setIsRunning(true)}
-                  size="lg"
-                  className="bg-green-600 hover:bg-green-700"
-                >
+                <Button onClick={() => setIsRunning(true)} size="lg" className="bg-green-600 hover:bg-green-700">
                   <Play className="w-5 h-5 mr-2" />
                   Reprendre
                 </Button>
               ) : (
-                <Button 
-                  onClick={pauseWorkout}
-                  size="lg"
-                  variant="outline"
-                >
+                <Button onClick={pauseWorkout} size="lg" variant="outline">
                   <Pause className="w-5 h-5 mr-2" />
                   Pause
                 </Button>
               )}
-              
-              <Button 
-                onClick={resetWorkout}
-                size="lg"
-                variant="destructive"
-              >
+
+              <Button onClick={resetWorkout} size="lg" variant="destructive">
                 <RotateCcw className="w-5 h-5 mr-2" />
                 Reset
               </Button>
@@ -620,8 +588,8 @@ export default function Training() {
                     Tours complétés: <span className="font-bold text-accent">{rounds}</span>
                     {quest.rounds_target > 0 && ` / ${quest.rounds_target}`}
                   </div>
-                  
-                  <Button 
+
+                  <Button
                     onClick={addRound}
                     size="sm"
                     className="bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-white"
@@ -652,10 +620,7 @@ export default function Training() {
                   </Card>
                 )}
 
-                <Button 
-                  onClick={finishWorkout}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
+                <Button onClick={finishWorkout} className="bg-purple-600 hover:bg-purple-700">
                   <Check className="w-4 h-4 mr-2" />
                   Terminer la séance
                 </Button>
@@ -672,11 +637,11 @@ export default function Training() {
           <CardContent>
             <div className="space-y-3">
               {quest.exercises.map((exercise, index) => (
-                <div 
+                <div
                   key={exercise.id}
                   className={`p-3 rounded-lg border transition-all ${
                     quest.workout_type === 'tabata' && index === exerciseIndex
-                      ? 'border-accent bg-accent/10' 
+                      ? 'border-accent bg-accent/10'
                       : 'border-muted bg-muted/20'
                   }`}
                 >
@@ -692,9 +657,7 @@ export default function Training() {
                         <DialogContent className="max-w-md">
                           <DialogHeader>
                             <DialogTitle>{exercise.name}</DialogTitle>
-                            <DialogDescription>
-                              Instructions pour bien réaliser l'exercice
-                            </DialogDescription>
+                            <DialogDescription>Instructions pour bien réaliser l&apos;exercice</DialogDescription>
                           </DialogHeader>
                           <div className="space-y-3">
                             {exercise.target_reps > 0 && (
@@ -721,16 +684,10 @@ export default function Training() {
                       </Dialog>
                     </div>
                     {exercise.target_reps > 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        {exercise.target_reps} reps
-                      </span>
+                      <span className="text-sm text-muted-foreground">{exercise.target_reps} reps</span>
                     )}
                   </div>
-                  {exercise.notes && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {exercise.notes}
-                    </p>
-                  )}
+                  {exercise.notes && <p className="text-xs text-muted-foreground mt-1">{exercise.notes}</p>}
                 </div>
               ))}
             </div>
@@ -759,43 +716,33 @@ export default function Training() {
         <Dialog open={showSummary} onOpenChange={setShowSummary}>
           <DialogContent className="max-w-md rpg-card">
             <DialogHeader>
-              <DialogTitle className="text-center text-xl">
-                🎉 Séance terminée !
-              </DialogTitle>
-              <DialogDescription className="text-center">
-                Félicitations pour cette séance !
-              </DialogDescription>
+              <DialogTitle className="text-center text-xl">🎉 Séance terminée !</DialogTitle>
+              <DialogDescription className="text-center">Félicitations pour cette séance !</DialogDescription>
             </DialogHeader>
-            
+
             {sessionSummary && (
               <div className="space-y-4">
                 <div className="text-center space-y-2">
-                  <div className="text-2xl font-bold text-primary">
-                    {formatTime(sessionSummary.totalTime)}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {sessionSummary.rounds} tours complétés
-                  </div>
+                  <div className="text-2xl font-bold text-primary">{formatTime(sessionSummary.totalTime)}</div>
+                  <div className="text-muted-foreground">{sessionSummary.rounds} tours complétés</div>
                 </div>
 
                 <div className="space-y-3">
                   <div className="text-center text-muted-foreground">
                     Prêt à valider cette séance et gagner des récompenses RPG ?
                   </div>
-                  <div className="text-sm text-center text-accent">
-                    ⚡ Calcul automatique des XP et progression
-                  </div>
+                  <div className="text-sm text-center text-accent">⚡ Calcul automatique des XP et progression</div>
                 </div>
 
                 <div className="flex gap-2">
-                  <Button 
+                  <Button
                     onClick={validateWorkout}
                     className="flex-1 hero-gradient text-white font-semibold"
                     disabled={isProcessingRewards}
                   >
-                    {isProcessingRewards ? "Traitement..." : "Valider et Progresser"}
+                    {isProcessingRewards ? 'Traitement...' : 'Valider et Progresser'}
                   </Button>
-                  <Button 
+                  <Button
                     onClick={() => setShowSummary(false)}
                     variant="outline"
                     className="flex-1"

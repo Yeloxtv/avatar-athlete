@@ -274,6 +274,47 @@ export default function QuestAdminDashboard() {
     setEditingQuest({ ...quest });
     setIsCreatingQuest(false);
   };
+  const syncQuestExercises = async (questId: string, exercises: Exercise[]) => {
+  // Normalise + réindexe (1..n), évite NaN/undefined
+  const normalized = (exercises || [])
+    .map((ex, idx) => ({
+      id: ex.id, // conserve id si existant (pour update)
+      quest_id: questId,
+      name: String(ex.name ?? '').trim(),
+      target_reps: Number(ex.target_reps ?? 0),
+      order_index: Number(ex.order_index ?? idx + 1) || idx + 1,
+      notes: (ex.notes?.trim?.() ? ex.notes : null) as string | null,
+    }))
+    .filter(ex => ex.name.length > 0) // on ignore les lignes vides
+
+  // Récupère les IDs existants pour calculer les suppressions
+  const { data: existing, error: existingErr } = await supabase
+    .from('quest_exercises')
+    .select('id')
+    .eq('quest_id', questId)
+  if (existingErr) throw existingErr
+
+  const existingIds = new Set((existing ?? []).map(r => r.id as string))
+  const incomingIds = new Set(normalized.map(r => r.id).filter(Boolean) as string[])
+  const toDelete = [...existingIds].filter(id => !incomingIds.has(id))
+
+  // Supprime celles retirées de l’UI
+  if (toDelete.length > 0) {
+    const { error: delErr } = await supabase
+      .from('quest_exercises')
+      .delete()
+      .in('id', toDelete)
+    if (delErr) throw delErr
+  }
+
+  // Upsert le reste (insert/update)
+  if (normalized.length > 0) {
+    const { error: upErr } = await supabase
+      .from('quest_exercises')
+      .upsert(normalized, { onConflict: 'id', ignoreDuplicates: false })
+    if (upErr) throw upErr
+  }
+};
 
   const handleSaveQuest = async () => {
   if (!editingQuest || !editingQuest.title?.trim()) {
@@ -285,14 +326,12 @@ export default function QuestAdminDashboard() {
     return;
   }
 
-  // Calcule xp_total cohérent avec ton schéma
   const xp_total =
     (editingQuest.xp_force || 0) +
     (editingQuest.xp_endurance || 0) +
     (editingQuest.xp_agilite || 0) +
     (editingQuest.xp_mental || 0);
 
-  // ⚠️ IMPORTANT : on n’envoie QUE les colonnes existantes de ta table "quests"
   const baseQuestPayload = {
     campaign_id: selectedCampaign.id,
     order_index: Number(editingQuest.order_index) || 1,
@@ -319,57 +358,49 @@ export default function QuestAdminDashboard() {
     is_published: Boolean(editingQuest.is_published),
   };
 
-  // Les exercices sont gérés à part (table quest_exercises)
   const exercises = editingQuest.exercises || [];
 
   try {
-    // setLoading(true);
-
     if (isCreatingQuest) {
-      // INSERT
+      // CREATE quest
       const { data: created, error } = await supabase
         .from("quests")
         .insert([baseQuestPayload])
         .select()
         .single();
-
       if (error) throw error;
 
-      const questId = created.id as string;
-
-      // INSERT exercices si présents
+      // CREATE exercises (si présents)
       if (exercises.length) {
-        const toInsert = exercises.map((ex: any, idx: number) => ({
-          quest_id: questId,
+        const toInsert = exercises.map((ex, idx) => ({
+          quest_id: created.id,
           order_index: Number(ex.order_index) || idx + 1,
           name: ex.name || "",
           target_reps: Number(ex.target_reps) || 0,
-          notes: ex.notes || "",
+          notes: ex.notes?.trim?.() ? ex.notes : null,
         }));
-        const { error: exErr } = await supabase
-          .from("quest_exercises")
-          .insert(toInsert);
+        const { error: exErr } = await supabase.from("quest_exercises").insert(toInsert);
         if (exErr) throw exErr;
       }
     } else {
-      // UPDATE
+      // UPDATE quest
       const { error } = await supabase
         .from("quests")
         .update(baseQuestPayload)
         .eq("id", editingQuest.id);
       if (error) throw error;
 
+      // UPSERT + DELETE exercises (synchro complète)
+      await syncQuestExercises(editingQuest.id!, exercises);
     }
 
-    await fetchQuests(selectedCampaign.id); // ← re-charge la liste de quêtes
+    await fetchQuests(selectedCampaign.id);
     setEditingQuest(null);
     setIsCreatingQuest(false);
     alert(isCreatingQuest ? "Quête créée" : "Quête mise à jour");
   } catch (e: any) {
     console.error("[handleSaveQuest]", e);
     alert(e?.message || "Erreur lors de la sauvegarde de la quête");
-  } finally {
-    // setLoading(false);
   }
 };
 
@@ -426,6 +457,9 @@ const fetchQuests = async (campaignId) => {
     if (!editingQuest) return;
     const newExercise = {
       ...emptyExercise,
+      name: "",
+      target_reps: 0,
+      notes: "",
       order_index: editingQuest.exercises.length + 1,
     };
     setEditingQuest({
@@ -1379,7 +1413,7 @@ useEffect(() => {
                     
                     <div className="space-y-4">
                       {editingQuest.exercises.map((exercise, index) => (
-                        <div key={index} className="flex gap-4 items-end p-4 border rounded-lg">
+                        <div key={exercise.id ?? `tmp-${index}`} className="flex gap-4 items-end p-4 border rounded-lg">
                           <div className="flex-1 space-y-2">
                             <Label>Nom de l'exercice</Label>
                             <Input
