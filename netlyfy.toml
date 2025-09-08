@@ -1,0 +1,9 @@
+# FILE: netlify.toml
+[build]
+  command = "pnpm build"      # ou "npm run build" / "yarn build"
+  publish = "dist"            # IMPORTANT: dossier de sortie Vite
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
