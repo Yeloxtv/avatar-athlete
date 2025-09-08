@@ -171,6 +171,11 @@ export default function QuestAdminDashboard() {
     });
   };
 
+  const newId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+
   // Fonctions campagnes (adaptées)
   const handleCreateCampaign = () => {
     setEditingCampaign({ ...emptyCampaign });
@@ -457,6 +462,7 @@ const fetchQuests = async (campaignId) => {
     if (!editingQuest) return;
     const newExercise = {
       ...emptyExercise,
+      id: newId(),
       name: "",
       target_reps: 0,
       notes: "",
