@@ -23,7 +23,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/profil" element={<Profil />} />
           <Route path="/campaign" element={<Campaign />} />
-          <Route path="/campaign/:slug" element={<Campaign />} />
+          <Route path="/campaign/:slug?" element={<Campaign />} />
           <Route path="/train/:questId" element={<Training />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dev-xp-sandbox" element={<DevXpSandbox />} />

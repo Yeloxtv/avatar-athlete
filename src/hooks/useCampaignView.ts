@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./useAuth";
 
 interface Campaign {
   id: string;
@@ -17,139 +17,139 @@ interface Quest {
   workout_type: string;
   type: string;
   user_status?: string;
-  exercises?: { id: string; name: string; target_reps: number; notes?: string }[];
-  xp_force?: number;
-  xp_endurance?: number;
-  xp_agilite?: number;
-  xp_mental?: number;
-  work_seconds?: number;
-  rest_seconds?: number;
-  rounds_target?: number;
-  total_minutes?: number;
+  db_status?: string;
 }
 
 export const useCampaignView = () => {
+  const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { slug } = useParams();
+  const { user } = useAuth();
 
-  // États
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
-  const [campaignLoading, setCampaignLoading] = useState(true);
   const [quests, setQuests] = useState<Quest[]>([]);
-  const [questsLoading, setQuestsLoading] = useState(false);
-
-  const loading = campaignLoading || questsLoading;
-
-  // Charger la campagne
-  useEffect(() => {
-    const fetchCampaign = async () => {
-      try {
-        if (slug) {
-          // Si on a un slug dans l'URL, récupérer cette campagne spécifique
-          const { data, error } = await supabase
-            .from('campaigns')
-            .select('id, slug, title, description')
-            .eq('slug', slug)
-            .single();
-
-          if (error) throw error;
-          setActiveCampaign(data);
-        } else {
-          // Sinon, récupérer la première campagne active
-          const { data, error } = await supabase
-            .from('campaigns')
-            .select('id, slug, title, description')
-            .eq('is_active', true)
-            .limit(1)
-            .single();
-
-          if (error) throw error;
-          setActiveCampaign(data);
-        }
-      } catch (error) {
-        console.error('Error fetching campaign:', error);
-        toast({
-          title: "Erreur",
-          description: "Impossible de charger la campagne",
-          variant: "destructive"
-        });
-      } finally {
-        setCampaignLoading(false);
-      }
-    };
-
-    fetchCampaign();
-  }, [slug]);
-
-  // Charger les quêtes quand la campagne change
-  useEffect(() => {
-    if (activeCampaign?.id) {
-      fetchQuests(activeCampaign.id);
-    }
-  }, [activeCampaign?.id]);
-
-  const fetchQuests = async (campaignId: string) => {
-    setQuestsLoading(true);
-    try {
-      // Utiliser le hook existant useQuests si disponible
-      // Pour l'instant, on fait un appel direct
-      const { data: questsData, error } = await supabase
-        .from('quests')
-        .select(`
-          id,
-          title,
-          description,
-          workout_type,
-          type,
-          work_seconds,
-          rest_seconds,
-          rounds_target,
-          total_minutes,
-          xp_force,
-          xp_endurance,
-          xp_agilite,
-          xp_mental,
-          exercises:quest_exercises(*)
-        `)
-        .eq('campaign_id', campaignId)
-        .eq('is_published', true)
-        .order('order_index');
-
-      if (error) throw error;
-
-      // Pour l'instant, on simule le user_status
-      // TODO: Intégrer avec le vrai système de progression utilisateur
-      const questsWithStatus = (questsData || []).map((quest, index) => ({
-        ...quest,
-        user_status: index === 0 ? 'unlocked' : 'locked' // Simulation simple
-      }));
-
-      setQuests(questsWithStatus);
-    } catch (error) {
-      console.error('Error fetching quests:', error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger les quêtes",
-        variant: "destructive"
-      });
-    } finally {
-      setQuestsLoading(false);
-    }
-  };
+  const [loading, setLoading] = useState(true);
 
   const navigateToQuest = (questId: string) => {
     navigate(`/train/${questId}`);
   };
 
   const navigateBack = () => {
-    navigate('/');
+    navigate("/campaign");
   };
+
+  const fetchCampaignAndQuests = async () => {
+    if (!slug) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Récupérer la campagne
+      const { data: campaignData, error: campaignError } = await supabase
+        .from("campaigns")
+        .select("*")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (campaignError) throw campaignError;
+      if (!campaignData) {
+        setActiveCampaign(null);
+        setQuests([]);
+        setLoading(false);
+        return;
+      }
+
+      setActiveCampaign(campaignData);
+
+      // Récupérer les quêtes
+      const { data: questsData, error: questsError } = await supabase
+        .from("quests")
+        .select("*")
+        .eq("campaign_id", campaignData.id)
+        .order("order_index", { ascending: true });
+
+      if (questsError) throw questsError;
+
+      // Récupérer les statuts utilisateur
+      let statusByQuestId = new Map<string, string>();
+
+      if (user && questsData && questsData.length > 0) {
+        const questIds = questsData.map((q) => q.id);
+
+        const { data: userQuests, error: userQuestsError } = await supabase
+          .from("user_quests")
+          .select("quest_id, status")
+          .eq("user_id", user.id)
+          .in("quest_id", questIds);
+
+        // 🔍 LOG UTILE : Vérifier les statuts récupérés
+        console.log("🔍 QUEST DEBUG - Statuts récupérés de la DB:", userQuests);
+
+        if (!userQuestsError && userQuests?.length) {
+          statusByQuestId = new Map(
+            userQuests.map((r: { quest_id: string; status: string }) => [
+              r.quest_id,
+              r.status,
+            ])
+          );
+        }
+      }
+
+      // Calculer les statuts finaux avec logique de déblocage
+      const questsWithStatus = (questsData || []).map((quest, index) => {
+        const dbStatus = statusByQuestId.get(quest.id);
+
+        let user_status = "locked";
+
+        if (dbStatus === "completed") {
+          user_status = "completed";
+        } else if (index === 0) {
+          user_status = "unlocked";
+        } else {
+          const previousQuest = questsData[index - 1];
+          const previousStatus = statusByQuestId.get(previousQuest?.id);
+
+          if (previousStatus === "completed") {
+            user_status = "unlocked";
+          }
+        }
+
+        // 🔍 LOG UTILE : Vérifier la logique de chaque quête
+        console.log(`🎯 QUEST DEBUG - ${quest.title}:`, {
+          order_index: quest.order_index,
+          dbStatus,
+          user_status,
+          previousCompleted: index > 0 ? statusByQuestId.get(questsData[index - 1]?.id) : 'N/A'
+        });
+
+        return {
+          ...quest,
+          user_status,
+          db_status: dbStatus || "aucun",
+        };
+      });
+
+      setQuests(questsWithStatus);
+    } catch (error) {
+      console.error("❌ Erreur lors du chargement:", error);
+      setActiveCampaign(null);
+      setQuests([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCampaignAndQuests();
+  }, [slug, user]);
 
   return {
     activeCampaign,
     quests,
     loading,
     navigateToQuest,
-    navigateBack
+    navigateBack,
   };
 };

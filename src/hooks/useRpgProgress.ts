@@ -3,7 +3,6 @@ import { useProfile } from './useProfile'
 import { XpService } from '@/services/xpService'
 import { WorkoutSessionInput, RewardResult } from '@/types/rpg'
 import { toast } from '@/hooks/use-toast'
-import { supabase } from '@/integrations/supabase/client'
 
 export function useRpgProgress() {
   const { profile, updateProfile } = useProfile()
@@ -48,31 +47,13 @@ export function useRpgProgress() {
 
       await updateProfile(updatedStats)
 
-      // Gérer les nouveaux badges
-      if (rewards.newBadges.length > 0) {
-        await handleNewBadges(rewards.newBadges)
-      }
-
-      // Afficher les messages de récompense
-      rewards.messages.forEach((message, index) => {
-        setTimeout(() => {
-          toast({
-            title: index === 0 ? "🔥 Séance terminée !" : "🎉 Progression !",
-            description: message,
-            duration: 3000 + (index * 1000), // Espacer les toasts
-          })
-        }, index * 1500)
-      })
-
-      // Gérer les boss débloqués
+      // Notification pour boss débloqué uniquement
       if (rewards.bossUnlocked) {
-        setTimeout(() => {
-          toast({
-            title: "⚔️ Boss débloqué !",
-            description: `${rewards.bossUnlocked!.bossName} t'attend !`,
-            duration: 5000,
-          })
-        }, rewards.messages.length * 1500)
+        toast({
+          title: "⚔️ Boss débloqué !",
+          description: `${rewards.bossUnlocked!.bossName} t'attend !`,
+          duration: 5000,
+        })
       }
 
       return rewards
@@ -89,33 +70,6 @@ export function useRpgProgress() {
       setIsProcessingRewards(false)
     }
   }, [profile, updateProfile, isProcessingRewards])
-
-  const handleNewBadges = async (badgeIds: string[]) => {
-    if (!profile) return
-
-    for (const badgeId of badgeIds) {
-      try {
-        // Récupérer le badge depuis la base
-        const { data: badge } = await supabase
-          .from('badges')
-          .select('id')
-          .eq('slug', badgeId)
-          .single()
-
-        if (badge) {
-          // Ajouter le badge à l'utilisateur
-          await supabase
-            .from('user_badges')
-            .upsert({
-              user_id: profile.user_id,
-              badge_id: badge.id
-            })
-        }
-      } catch (error) {
-        console.error('Error adding badge:', badgeId, error)
-      }
-    }
-  }
 
   const getPlayerLevel = useCallback(() => {
     if (!profile) return 1

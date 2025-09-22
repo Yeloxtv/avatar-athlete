@@ -63,19 +63,15 @@ export default function Campaign() {
 
         {/* Quests List */}
         <div className="space-y-4">
-          {quests.map((quest, index) => {
-            const questStatus = isQuestAvailable(quest, index, quests);
-
-            return (
-              <QuestCard
-                key={quest.id}
-                quest={quest}
-                index={index}
-                status={questStatus}
-                onClick={() => navigateToQuest(quest.id)}
-              />
-            );
-          })}
+          {quests.map((quest, index) => (
+            <QuestCard
+              key={quest.id}
+              quest={quest}
+              index={index}
+              status={quest.user_status || 'locked'}
+              onClick={() => navigateToQuest(quest.id)}
+            />
+          ))}
         </div>
 
         {/* Message si aucune quête */}
