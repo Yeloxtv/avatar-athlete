@@ -37,6 +37,50 @@ export const useCampaignView = () => {
     navigate("/profil");
   };
 
+  const resetCampaign = async () => {
+    if (!activeCampaign || !user) return;
+
+    try {
+      // Récupérer toutes les quêtes de la campagne
+      const { data: campaignQuests, error: questsError } = await supabase
+        .from("quests")
+        .select("id, order_index")
+        .eq("campaign_id", activeCampaign.id)
+        .order("order_index", { ascending: true });
+
+      if (questsError) throw questsError;
+      if (!campaignQuests || campaignQuests.length === 0) return;
+
+      // Supprimer toutes les entrées user_quests pour cette campagne
+      const questIds = campaignQuests.map(q => q.id);
+      const { error: deleteError } = await supabase
+        .from("user_quests")
+        .delete()
+        .eq("user_id", user.id)
+        .in("quest_id", questIds);
+
+      if (deleteError) throw deleteError;
+
+      // Créer une nouvelle entrée pour la première quête uniquement
+      const firstQuest = campaignQuests[0];
+      const { error: insertError } = await supabase
+        .from("user_quests")
+        .insert({
+          user_id: user.id,
+          quest_id: firstQuest.id,
+          status: "available"
+        });
+
+      if (insertError) throw insertError;
+
+      // Recharger les données
+      await fetchCampaignAndQuests();
+    } catch (error) {
+      console.error("Erreur lors du reset de la campagne:", error);
+      throw error;
+    }
+  };
+
   const fetchCampaignAndQuests = async () => {
     if (!slug) {
       setLoading(false);
@@ -153,5 +197,6 @@ export const useCampaignView = () => {
     loading,
     navigateToQuest,
     navigateBack,
+    resetCampaign,
   };
 };
