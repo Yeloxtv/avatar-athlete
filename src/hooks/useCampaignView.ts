@@ -51,18 +51,25 @@ export const useCampaignView = () => {
       if (questsError) throw questsError;
       if (!campaignQuests || campaignQuests.length === 0) return;
 
-      // Supprimer toutes les entrées user_quests pour cette campagne
       const questIds = campaignQuests.map(q => q.id);
+      const firstQuest = campaignQuests[0];
+
+      // Supprimer toutes les entrées user_quests pour cette campagne
       const { error: deleteError } = await supabase
         .from("user_quests")
         .delete()
         .eq("user_id", user.id)
         .in("quest_id", questIds);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.error("Erreur lors de la suppression:", deleteError);
+        throw deleteError;
+      }
+
+      // Attendre un peu pour s'assurer que la suppression est bien propagée
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Créer une nouvelle entrée pour la première quête uniquement
-      const firstQuest = campaignQuests[0];
       const { error: insertError } = await supabase
         .from("user_quests")
         .insert({
@@ -71,7 +78,10 @@ export const useCampaignView = () => {
           status: "available"
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("Erreur lors de l'insertion:", insertError);
+        throw insertError;
+      }
 
       // Recharger les données
       await fetchCampaignAndQuests();
