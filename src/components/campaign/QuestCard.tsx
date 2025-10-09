@@ -36,14 +36,14 @@ export const QuestCard: React.FC<QuestCardProps> = ({
   status,
   onClick
 }) => {
-  const isClickable = status === 'unlocked';
+  const isClickable = status === 'available';
 
   return (
     <Card
       className={`border transition-all ${
-        status === 'done'
+        status === 'completed'
           ? 'border-green-500/30 bg-green-500/5'
-          : status === 'unlocked'
+          : status === 'available'
           ? 'border-accent/30 shadow-lg hover:shadow-xl cursor-pointer'
           : 'border-muted/30 opacity-70'
       }`}
@@ -167,7 +167,7 @@ export const QuestCard: React.FC<QuestCardProps> = ({
         </div>
 
         {/* Action Button */}
-        {status === 'unlocked' && (
+        {status === 'available' && (
           <button
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors"
             onClick={(e) => {
@@ -179,7 +179,7 @@ export const QuestCard: React.FC<QuestCardProps> = ({
           </button>
         )}
 
-        {status === 'done' && (
+        {status === 'completed' && (
           <div className="text-center py-2 text-green-500 font-medium">
             ✅ Quête terminée !
           </div>
