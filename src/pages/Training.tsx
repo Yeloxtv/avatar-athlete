@@ -208,7 +208,7 @@ export default function Training() {
       const { error: updateError } = await supabase
         .from('user_quests')
         .update({
-          status: 'in_progress',
+          status: 'available',
         })
         .eq('user_id', profile.user_id)
         .eq('quest_id', quest.id)
@@ -221,7 +221,7 @@ export default function Training() {
           .insert({
             user_id: profile.user_id,
             quest_id: quest.id,
-            status: 'in_progress',
+            status: 'available',
           })
 
         if (insertError) {

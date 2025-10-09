@@ -32,7 +32,7 @@ export default function Campaign() {
     return <LoadingState />;
   }
 
-  const completedQuests = quests.filter(q => q?.user_status === 'done').length;
+  const completedQuests = quests.filter(q => q?.user_status === 'completed').length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-4">

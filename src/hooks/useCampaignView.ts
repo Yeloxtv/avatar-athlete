@@ -34,7 +34,7 @@ export const useCampaignView = () => {
   };
 
   const navigateBack = () => {
-    navigate("/campaign");
+    navigate("/profil");
   };
 
   const fetchCampaignAndQuests = async () => {
@@ -105,14 +105,16 @@ export const useCampaignView = () => {
 
         if (dbStatus === "completed") {
           user_status = "completed";
+        } else if (dbStatus === "available") {
+          user_status = "available";
         } else if (index === 0) {
-          user_status = "unlocked";
+          user_status = "available";
         } else {
           const previousQuest = questsData[index - 1];
           const previousStatus = statusByQuestId.get(previousQuest?.id);
 
           if (previousStatus === "completed") {
-            user_status = "unlocked";
+            user_status = "available";
           }
         }
 

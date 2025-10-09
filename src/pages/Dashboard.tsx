@@ -365,7 +365,7 @@ export default function QuestAdminDashboard() {
                   setEditingCampaign(null);
                   setIsCreatingCampaign(false);
                 }}
-                onChange={setEditingCampaign}
+                onChange={(updates) => setEditingCampaign(prev => prev ? {...prev, ...updates} : prev)}
                 onEquipmentToggle={handleCampaignEquipmentToggle}
               />
             )}
