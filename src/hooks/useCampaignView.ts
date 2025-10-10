@@ -69,18 +69,20 @@ export const useCampaignView = () => {
       // Attendre un peu pour s'assurer que la suppression est bien propagée
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Créer une nouvelle entrée pour la première quête uniquement
-      const { error: insertError } = await supabase
+      // Créer ou mettre à jour l'entrée pour la première quête
+      const { error: upsertError } = await supabase
         .from("user_quests")
-        .insert({
+        .upsert({
           user_id: user.id,
           quest_id: firstQuest.id,
           status: "available"
+        }, {
+          onConflict: "user_id,quest_id"
         });
 
-      if (insertError) {
-        console.error("Erreur lors de l'insertion:", insertError);
-        throw insertError;
+      if (upsertError) {
+        console.error("Erreur lors de l'upsert:", upsertError);
+        throw upsertError;
       }
 
       // Recharger les données
