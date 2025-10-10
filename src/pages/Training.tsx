@@ -15,6 +15,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
 import { LevelDisplay } from '@/components/ui/level-display'
 import { RewardResult } from '@/types/rpg'
+import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
 
 
 interface SessionSummary {
@@ -52,8 +56,19 @@ export default function Training() {
   const [loading, setLoading] = useState(true)
   const [roundTimes, setRoundTimes] = useState<RoundTime[]>([])
   const [roundStartTime, setRoundStartTime] = useState<number>(0)
-  const intervalRef = useRef<number | null>(null) // ✅ navigateur → number
+  const intervalRef = useRef<number | null>(null)
 
+
+  // 🎯 DÉPLACER CES LIGNES ICI (après les states, AVANT les useEffect)
+  // Détection du type d'entraînement
+  const isStrengthWorkout = quest?.workout_type === 'strength'
+  
+  // Hook pour musculation (TOUJOURS appelé, conformément aux règles React)
+  const strengthWorkout = useStrengthWorkout({
+    exercises: isStrengthWorkout ? (quest?.exercises || []) : [],
+    sessionId: session?.id || '',
+    restTimeSeconds: 60
+  })
 
   // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
@@ -72,7 +87,13 @@ export default function Training() {
 
     if (isRunning) {
       intervalRef.current = window.setInterval(() => {
-        // incrémente le temps et vérifie AMRAP avec la valeur fraîche
+        // 🏋️ Pour la musculation : simple incrément du temps
+        if (isStrengthWorkout) {
+          setTime(prevTime => prevTime + 1)
+          return
+        }
+
+        // ⚡ Pour HIIT : logique existante complexe
         setTime(prevTime => {
           const nextTime = prevTime + 1
           if (quest?.workout_type === 'amrap' && (quest?.total_minutes ?? 0) > 0) {
@@ -115,7 +136,7 @@ export default function Training() {
         intervalRef.current = null
       }
     }
-  }, [isRunning, quest]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRunning, quest, isStrengthWorkout]) // ← Ajouter isStrengthWorkout aux deps
 
   const fetchQuest = async () => {
     if (!questId || !profile?.user_id) return
@@ -139,7 +160,10 @@ export default function Training() {
             name,
             target_reps,
             order_index,
-            notes
+            notes,
+            sets_count,
+            target_weight,
+            rest_seconds
           )
         `)
         .eq('id', questId)
@@ -148,31 +172,40 @@ export default function Training() {
       const row = questRows?.[0]
       if (!row) throw new Error('Quest not found')
 
-      setQuest({
+      const questData = {
         ...row,
         exercises: row.quest_exercises ?? []
-      })
+      }
 
-      // 3) reprise de session (safeSingle)
-      const { data: sessions, error: sessErr } = await supabase
-        .from('workout_sessions')
-        .select('*')
-        .eq('user_id', profile.user_id)
-        .eq('quest_id', questId)
-        .eq('is_completed', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-      if (!sessErr) {
-        const existingSession = sessions?.[0]
-        if (existingSession) {
-          setSession(existingSession)
-          setTime(existingSession.total_time_seconds ?? 0)
-          setRounds(existingSession.rounds_completed ?? 0)
-          toast({
-            title: 'Session reprise',
-            description: 'Votre session précédente a été restaurée',
-          })
+      setQuest(questData)
+
+      // 3) reprise de session (SEULEMENT pour HIIT, pas pour musculation)
+      // ⚠️ Maintenant qu'on a questData, on peut vérifier le type
+      if (questData.workout_type !== 'strength') {
+        const { data: sessions, error: sessErr } = await supabase
+          .from('workout_sessions')
+          .select('*')
+          .eq('user_id', profile.user_id)
+          .eq('quest_id', questId)
+          .eq('is_completed', false)
+          .order('created_at', { ascending: false })
+          .limit(1)
+        
+        if (!sessErr) {
+          const existingSession = sessions?.[0]
+          if (existingSession) {
+            setSession(existingSession)
+            setTime(existingSession.total_time_seconds ?? 0)
+            setRounds(existingSession.rounds_completed ?? 0)
+            toast({
+              title: 'Session reprise',
+              description: 'Votre session précédente a été restaurée',
+            })
+          }
         }
+      } else {
+        // 🏋️ Pour musculation : toujours créer une nouvelle session, pas de reprise
+        console.log('🏋️ Séance de musculation : pas de reprise de session')
       }
     } catch (error) {
       console.error('Error fetching quest:', error)
@@ -244,8 +277,18 @@ export default function Training() {
         if (newSession) setSession(newSession)
       }
 
-      setRoundStartTime(time)
-      startCountdown()
+      // 🏋️ Pour musculation : démarrage immédiat du timer
+      if (isStrengthWorkout) {
+        setIsRunning(true) // ← Démarrage direct
+        toast({
+          title: "Séance de musculation démarrée",
+          description: "Bonne séance ! Le timer est lancé.",
+        })
+      } else {
+        // ⚡ Pour HIIT : countdown comme avant
+        setRoundStartTime(time)
+        startCountdown()
+      }
     } catch (error) {
       console.error('Error starting workout:', error)
       toast({
@@ -271,8 +314,18 @@ export default function Training() {
     setExerciseIndex(0)
 
     if (session) {
+      // 🧹 Supprimer la session non complétée
       await supabase.from('workout_sessions').delete().eq('id', session.id)
       setSession(null)
+    }
+
+    // 🏋️ Pour musculation : reset aussi le hook
+    if (isStrengthWorkout) {
+      // Le hook se reset automatiquement via ses props
+      toast({
+        title: "Séance remise à zéro",
+        description: "Vous pouvez recommencer",
+      })
     }
   }
 
@@ -680,6 +733,280 @@ const handleRewardsModalClose = async () => {
           <div className="text-6xl">❌</div>
           <p className="text-muted-foreground">Quête introuvable</p>
           <Button onClick={() => navigate('/campaign')}>Retour aux quêtes</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // 🏋️ Interface Musculation
+  if (isStrengthWorkout && session && quest) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-4">
+        <div className="max-w-4xl mx-auto space-y-6">
+          
+          {/* Header avec retour */}
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/campaign')}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold">{quest.title}</h1>
+              <p className="text-muted-foreground">Séance de musculation</p>
+            </div>
+          </div>
+
+          {/* Timer principal de la séance */}
+          <Card className="border-accent/30">
+            <CardContent className="p-6 text-center">
+              <div className="text-3xl font-mono font-bold">
+                {formatTime(time)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Temps total de la séance
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Progression globale */}
+          <Card className="border-accent/30">
+            <CardContent className="p-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium">Progression</span>
+                <span className="text-sm text-muted-foreground">
+                  {strengthWorkout.state.currentExerciseIndex + 1}/{quest.exercises.length} exercices
+                </span>
+              </div>
+              <Progress value={strengthWorkout.progressPercentage} className="h-2" />
+            </CardContent>
+          </Card>
+
+          {/* Exercice en cours */}
+          {strengthWorkout.currentExercise && !strengthWorkout.isWorkoutComplete && (
+            <Card className="border-green-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span>{strengthWorkout.currentExercise.name}</span>
+                  <Badge variant="outline" className="bg-green-50">
+                    Série {strengthWorkout.state.currentSet}/{strengthWorkout.totalSets}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                
+                {/* Infos de l'exercice */}
+                <div className="grid grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {strengthWorkout.currentExercise.target_reps}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Répétitions cible</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {strengthWorkout.totalSets}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Séries totales</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {strengthWorkout.currentExercise.target_weight ? 
+                        `${strengthWorkout.currentExercise.target_weight}kg` : 
+                        'Libre'
+                      }
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {strengthWorkout.currentExercise.target_weight ? 'Charge cible' : 'Poids libre'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timer de repos */}
+                {strengthWorkout.state.isResting ? (
+                  <Card className="border-blue-200/50 bg-muted/40">
+                    <CardContent className="p-6 text-center">
+                      <div className="text-4xl font-mono font-bold text-blue-600 mb-2">
+                        {strengthWorkout.state.restTimer}s
+                      </div>
+                      <div className="text-sm text-blue-600/80 mb-4">Temps de repos</div>
+                      <Progress 
+                        value={strengthWorkout.exerciseRestTime > 0 ? (strengthWorkout.state.restTimer / strengthWorkout.exerciseRestTime) * 100 : 0} 
+                        className="mb-4 bg-muted/60"
+                      />
+                      <Button 
+                        onClick={strengthWorkout.skipRest} 
+                        variant="outline"
+                        className="border-blue-300/50 hover:bg-blue-50/50"
+                      >
+                        Passer le repos
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  // Saisie simplifiée des performances
+                  <StrengthPerformanceInput 
+                    exercise={strengthWorkout.currentExercise}
+                    onComplete={strengthWorkout.completeSet}
+                    disabled={!strengthWorkout.canCompleteSet}
+                  />
+                )}
+
+                {/* Historique des séries */}
+                {strengthWorkout.currentExerciseLogs.length > 0 && (
+                  <Card className="border-muted">
+                    <CardHeader>
+                      <CardTitle className="text-sm">Séries précédentes</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {strengthWorkout.currentExerciseLogs.map((log, index) => (
+                        <div key={index} className="flex justify-between text-sm">
+                          <span>Série {log.set_number}</span>
+                          <span className="font-medium">
+                            {log.reps_completed} reps @ {log.weight_used || 'PDC'}kg
+                          </span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Liste de tous les exercices avec progression */}
+          <Card className="border-accent/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span>📋</span>
+                Exercices de la séance
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {quest.exercises.map((exercise, index) => {
+                // Calculer le statut de l'exercice
+                const isCurrentExercise = index === strengthWorkout.state.currentExerciseIndex
+                const exerciseLogs = strengthWorkout.state.exerciseLogs.filter(log => log.exercise_id === exercise.id)
+                const targetSets = exercise.sets_count || 3
+                const completedSets = exerciseLogs.length
+                const isCompleted = completedSets >= targetSets
+                const isPrevious = index < strengthWorkout.state.currentExerciseIndex
+                
+                // Définir les styles selon le statut
+                let cardClasses = "p-4 rounded-lg border transition-all duration-300"
+                let statusIcon = ""
+                let statusText = ""
+                
+                if (isCompleted || isPrevious) {
+                  cardClasses += " border-green-500 bg-green-50 shadow-md"
+                  statusIcon = "✅"
+                  statusText = `${completedSets}/${targetSets} séries - Terminé`
+                } else if (isCurrentExercise) {
+                  // 🔥 Nouveau style plus doux avec bordure jaune voyante
+                  cardClasses += " border-yellow-400 bg-muted/40 shadow-lg ring-2 ring-yellow-300/50"
+                  statusIcon = "🔥"
+                  statusText = `${completedSets}/${targetSets} séries - En cours`
+                } else {
+                  cardClasses += " border-muted bg-muted/20"
+                  statusIcon = "⏳"
+                  statusText = `0/${targetSets} séries - À venir`
+                }
+
+                return (
+                  <div key={exercise.id} className={cardClasses}>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-lg">{statusIcon}</span>
+                          <h4 className={`font-medium ${isCurrentExercise ? 'text-yellow-600' : isCompleted ? 'text-green-700' : 'text-muted-foreground'}`}>
+                            {exercise.name}
+                          </h4>
+                        </div>
+                        
+                        {/* Infos de l'exercice */}
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Reps: </span>
+                            <span className="font-medium">{exercise.target_reps}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Poids: </span>
+                            <span className="font-medium">
+                              {exercise.target_weight ? `${exercise.target_weight}kg` : 'Libre'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Repos: </span>
+                            <span className="font-medium">{exercise.rest_seconds || 60}s</span>
+                          </div>
+                        </div>
+                        
+                        {/* Progression des séries */}
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-muted-foreground">Progression</span>
+                            <span className="text-xs font-medium">{statusText}</span>
+                          </div>
+                          <Progress 
+                            value={(completedSets / targetSets) * 100} 
+                            className={`h-2 ${isCompleted ? 'bg-green-100' : isCurrentExercise ? 'bg-blue-100' : ''}`}
+                          />
+                        </div>
+
+                        {/* Détail des séries réalisées */}
+                        {exerciseLogs.length > 0 && (
+                          <div className="mt-3 p-3 bg-muted/60 rounded border border-muted/40">
+                            <div className="text-xs text-muted-foreground mb-2">Séries réalisées :</div>
+                            <div className="flex flex-wrap gap-2">
+                              {exerciseLogs.map((log, logIndex) => (
+                                <span 
+                                  key={logIndex}
+                                  className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-md border border-purple-200 font-medium"
+                                >
+                                  {log.reps_completed} @ {log.weight_used || 'PDC'}kg
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              
+              {/* Statistiques globales */}
+              <div className="mt-4 p-3 bg-accent/10 rounded-lg border border-accent/20">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-accent">
+                      {strengthWorkout.state.completedSets}
+                    </div>
+                    <div className="text-muted-foreground">Séries totales</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-accent">
+                      {quest.exercises.reduce((total, ex) => total + (ex.sets_count || 3), 0)}
+                    </div>
+                    <div className="text-muted-foreground">Séries prévues</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Fin d'entraînement */}
+          {strengthWorkout.isWorkoutComplete && (
+            <Card className="border-green-200 bg-green-50">
+              <CardContent className="p-6 text-center">
+                <h2 className="text-2xl font-bold text-green-600 mb-4">🎉 Entraînement terminé !</h2>
+                <Button 
+                  onClick={finishWorkout}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Valider la séance
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     )

@@ -20,7 +20,8 @@ export const WORKOUT_TYPES = [
   { value: 'for_time', label: 'For Time' },
   { value: 'tabata', label: 'Tabata' },
   { value: 'amrap', label: 'AMRAP' },
-  { value: 'emom', label: 'EMOM' }
+  { value: 'emom', label: 'EMOM' },
+  { value: "strength", label: "🏋️ Musculation" },
 ] as const;
 
 export const QUEST_TYPES = [

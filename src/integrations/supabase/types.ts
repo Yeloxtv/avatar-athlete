@@ -184,6 +184,9 @@ export type Database = {
           order_index: number
           quest_id: string
           target_reps: number | null
+          sets_count: number | null
+          target_weight: number | null  
+          rest_seconds: number | null
         }
         Insert: {
           created_at?: string

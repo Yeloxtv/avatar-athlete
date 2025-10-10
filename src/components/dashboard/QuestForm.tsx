@@ -323,9 +323,10 @@ export const QuestForm: React.FC<QuestFormProps> = ({
                   <Input
                     value={exercise.name}
                     onChange={(e) => onExerciseChange(index, "name", e.target.value)}
-                    placeholder="Ex: Pompes"
+                    placeholder="Ex: Développé couché"
                   />
                 </div>
+                
                 <div className="w-32 space-y-2">
                   <Label>Répétitions</Label>
                   <Input
@@ -334,6 +335,41 @@ export const QuestForm: React.FC<QuestFormProps> = ({
                     onChange={(e) => onExerciseChange(index, "target_reps", parseInt(e.target.value) || 0)}
                   />
                 </div>
+
+                {/* 🏋️ Champs spécifiques musculation */}
+                {quest.workout_type === "strength" && (
+                  <>
+                    <div className="w-32 space-y-2">
+                      <Label>Séries</Label>
+                      <Input
+                        type="number"
+                        value={exercise.sets_count || quest.sets_count || 3}
+                        onChange={(e) => onExerciseChange(index, "sets_count", parseInt(e.target.value) || 3)}
+                        placeholder="3"
+                      />
+                    </div>
+                    <div className="w-32 space-y-2">
+                      <Label>Poids (kg)</Label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        value={exercise.target_weight || ""}
+                        onChange={(e) => onExerciseChange(index, "target_weight", parseFloat(e.target.value) || undefined)}
+                        placeholder="Optionnel"
+                      />
+                    </div>
+                    <div className="w-32 space-y-2">
+                      <Label>Repos (s)</Label>
+                      <Input
+                        type="number"
+                        value={exercise.rest_seconds || quest.rest_seconds || 60}
+                        onChange={(e) => onExerciseChange(index, "rest_seconds", parseInt(e.target.value) || 60)}
+                        placeholder="60"
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="w-32 space-y-2">
                   <Label>Notes</Label>
                   <Input
@@ -342,6 +378,7 @@ export const QuestForm: React.FC<QuestFormProps> = ({
                     placeholder="Optionnel"
                   />
                 </div>
+                
                 <Button
                   variant="ghost"
                   size="sm"
