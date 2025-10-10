@@ -9,6 +9,7 @@ import Training from "./pages/Training";
 import Dashboard from "./pages/Dashboard";
 import DevXpSandbox from "./pages/DevXpSandbox";
 import Profil from "./pages/Profil";
+import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/profil" element={<Profil />} />
+          <Route path="/historique" element={<History />} />
           <Route path="/campaign" element={<Campaign />} />
           <Route path="/campaign/:slug?" element={<Campaign />} />
           <Route path="/train/:questId" element={<Training />} />

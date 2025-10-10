@@ -16,6 +16,7 @@ import { LevelDisplay } from '@/components/ui/level-display'
 import { RpgStatsDisplay } from '@/components/ui/rpg-stats-display'
 import { useNavigate } from 'react-router-dom'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
+import { History as HistoryIcon } from 'lucide-react'
 
 export default function Profil() {
   const { profile, loading: profileLoading } = useProfile()
@@ -72,9 +73,15 @@ export default function Profil() {
             </h1>
             <p className="text-muted-foreground">Salut {profile?.display_name} !</p>
           </div>
-          <Button variant="ghost" onClick={signOut}>
-            Déconnexion
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/historique')}>
+              <HistoryIcon className="w-4 h-4 mr-2" />
+              Historique
+            </Button>
+            <Button variant="ghost" onClick={signOut}>
+              Déconnexion
+            </Button>
+          </div>
         </div>
 
         {/* Profil condensé */}
