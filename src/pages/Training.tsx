@@ -15,6 +15,7 @@ import { useHiitTimer } from '@/hooks/useHiitTimer'
 import WorkoutHeader from '@/components/workout/shared/WorkoutHeader'
 import StrengthWorkoutInterface from '@/components/workout/strength/StrengthWorkoutInterface'
 import HiitWorkoutInterface from '@/components/workout/hiit/HiitWorkoutInterface'
+import SessionSummaryModal from '@/components/workout/SessionSummaryModal'
 
 
 export default function Training() {
@@ -25,6 +26,9 @@ export default function Training() {
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
   const [loading, setLoading] = useState(true)
   const [countdown, setCountdown] = useState(0)
+  
+  // ✨ NOUVEAUX STATES pour le récapitulatif
+  const [showSessionSummary, setShowSessionSummary] = useState(false)
 
   // Détection du type d'entraînement
   const isStrengthWorkout = quest?.workout_type === 'strength'
@@ -189,29 +193,29 @@ export default function Training() {
 
   const finishWorkout = async () => {
     console.log('🏁 finishWorkout appelée dans Training.tsx')
-    console.log('🔍 workoutSession.session:', workoutSession.session)
-    console.log('🔍 quest:', quest?.id, quest?.workout_type)
-    console.log('🔍 profile:', profile?.user_id)
-    console.log('🔍 isStrengthWorkout:', isStrengthWorkout)
     
-    if (!workoutSession.session) {
-      console.log('❌ Pas de session! Tentative de création...')
-      if (isStrengthWorkout) {
-        console.log('🔄 Création session pour musculation...')
-        await workoutSession.startWorkout()
-        console.log('🔄 Session créée, nouvelle tentative...')
-        
-        // Attendre un peu que la session soit bien créée
-        await new Promise(resolve => setTimeout(resolve, 500))
+    // Arrêter le workout
+    workoutSession.setIsRunning(false)
+    
+    // Sauvegarder la session avant de naviguer
+    if (workoutSession.session) {
+      try {
+        await supabase
+          .from('workout_sessions')
+          .update({
+            total_time_seconds: workoutSession.time,
+            rounds_completed: workoutSession.rounds,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', workoutSession.session.id)
+      } catch (error) {
+        console.warn('⚠️ Erreur sauvegarde session:', error)
       }
     }
     
-    workoutSession.setIsRunning(false)
-    
-    console.log('🚀 Appel de validateWorkout...')
-    console.log('🔍 Session finale:', workoutSession.session)
-    await workoutValidation.validateWorkout()
-    console.log('✅ validateWorkout terminé')
+    // Naviguer vers la page de récapitulatif
+    console.log('🚀 Navigation vers le récapitulatif...')
+    navigate(`/training/${questId}/summary`)
   }
 
   const formatTime = (seconds: number) => {
@@ -264,7 +268,18 @@ export default function Training() {
             onStart={startWorkout}
             onPause={workoutSession.pauseWorkout}
             onReset={workoutSession.resetWorkout}
-            onFinishWorkout={finishWorkout}  // ← AJOUTER cette ligne manquante !
+            onFinishWorkout={finishWorkout}
+          />
+
+          <WorkoutRewardsModal
+            isOpen={workoutValidation.showRewardsModal}
+            onClose={workoutValidation.handleRewardsModalClose}
+            rewards={workoutValidation.rewardResults}
+            sessionData={{
+              rounds: workoutSession.rounds,
+              totalTime: workoutSession.time,
+              questTitle: quest?.title
+            }}
           />
         </div>
       </div>
@@ -302,12 +317,16 @@ export default function Training() {
           onFinishWorkout={finishWorkout}
         />
 
-        {/* RPG Rewards Modal */}
+        {/* RPG Rewards Modal - Affichage après validation */}
         <WorkoutRewardsModal
           isOpen={workoutValidation.showRewardsModal}
           onClose={workoutValidation.handleRewardsModalClose}
           rewards={workoutValidation.rewardResults}
-          sessionData={null}
+          sessionData={{
+            rounds: workoutSession.rounds,
+            totalTime: workoutSession.time,
+            questTitle: quest?.title
+          }}
         />
       </div>
     </div>
