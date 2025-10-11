@@ -11,6 +11,7 @@ import DevXpSandbox from "./pages/DevXpSandbox";
 import Profil from "./pages/Profil";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
+import Statistics from "./pages/Statistics";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/train/:questId" element={<Training />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dev-xp-sandbox" element={<DevXpSandbox />} />
+          <Route path="/statistics" element={<Statistics />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
