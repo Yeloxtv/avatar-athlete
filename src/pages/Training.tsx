@@ -794,29 +794,41 @@ const handleRewardsModalClose = async () => {
               <CardContent className="space-y-6">
                 
                 {/* Infos de l'exercice */}
-                <div className="grid grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+                <div className="grid grid-cols-4 gap-3 p-4 bg-muted/30 rounded-lg">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-xl font-bold text-blue-600">
                       {strengthWorkout.currentExercise.target_reps}
                     </div>
-                    <div className="text-sm text-muted-foreground">Répétitions cible</div>
+                    <div className="text-xs text-muted-foreground">Répétitions cible</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">
+                    <div className="text-xl font-bold text-purple-600">
                       {strengthWorkout.totalSets}
                     </div>
-                    <div className="text-sm text-muted-foreground">Séries totales</div>
+                    <div className="text-xs text-muted-foreground">Séries totales</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-xl font-bold text-green-600">
                       {strengthWorkout.currentExercise.target_weight ? 
                         `${strengthWorkout.currentExercise.target_weight}kg` : 
                         'Libre'
                       }
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                       {strengthWorkout.currentExercise.target_weight ? 'Charge cible' : 'Poids libre'}
                     </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-orange-600">
+                      {(() => {
+                        const prevPerf = strengthWorkout.getCurrentExercisePreviousPerformance()
+                        console.log(`🔍 Performance précédente pour ${strengthWorkout.currentExercise?.name} (ID: ${strengthWorkout.currentExercise?.id}):`, prevPerf)
+                        
+                        if (!prevPerf) return 'Aucune donnée'
+                        return `${prevPerf.reps_completed} @ ${prevPerf.weight_used || 'PDC'}kg`
+                      })()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Meilleur précédent</div>
                   </div>
                 </div>
 
@@ -896,15 +908,17 @@ const handleRewardsModalClose = async () => {
                 let statusText = ""
                 
                 if (isCompleted || isPrevious) {
-                  cardClasses += " border-green-500 bg-green-50 shadow-md"
+                  // ✅ NOUVEAU : Design élégant pour exercice terminé
+                  cardClasses += " border-green-400/60 bg-muted/70 shadow-md ring-1 ring-green-400/30"
                   statusIcon = "✅"
                   statusText = `${completedSets}/${targetSets} séries - Terminé`
                 } else if (isCurrentExercise) {
-                  // 🔥 Nouveau style plus doux avec bordure jaune voyante
+                  // 🔥 Exercice en cours (jaune - inchangé)
                   cardClasses += " border-yellow-400 bg-muted/40 shadow-lg ring-2 ring-yellow-300/50"
                   statusIcon = "🔥"
                   statusText = `${completedSets}/${targetSets} séries - En cours`
                 } else {
+                  // ⏳ À venir (gris - inchangé)
                   cardClasses += " border-muted bg-muted/20"
                   statusIcon = "⏳"
                   statusText = `0/${targetSets} séries - À venir`
@@ -916,7 +930,7 @@ const handleRewardsModalClose = async () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">{statusIcon}</span>
-                          <h4 className={`font-medium ${isCurrentExercise ? 'text-yellow-600' : isCompleted ? 'text-green-700' : 'text-muted-foreground'}`}>
+                          <h4 className={`font-medium ${isCurrentExercise ? 'text-yellow-600' : isCompleted ? 'text-green-300' : 'text-muted-foreground'}`}>
                             {exercise.name}
                           </h4>
                         </div>
@@ -947,7 +961,7 @@ const handleRewardsModalClose = async () => {
                           </div>
                           <Progress 
                             value={(completedSets / targetSets) * 100} 
-                            className={`h-2 ${isCompleted ? 'bg-green-100' : isCurrentExercise ? 'bg-blue-100' : ''}`}
+                            className={`h-2 ${isCompleted ? '[&>div]:bg-green-400' : isCurrentExercise ? '[&>div]:bg-yellow-400' : ''}`}
                           />
                         </div>
 
@@ -959,7 +973,7 @@ const handleRewardsModalClose = async () => {
                               {exerciseLogs.map((log, logIndex) => (
                                 <span 
                                   key={logIndex}
-                                  className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-md border border-purple-200 font-medium"
+                                  className="text-xs px-2 py-1 rounded-md font-medium bg-purple-600 text-white border border-purple-700"
                                 >
                                   {log.reps_completed} @ {log.weight_used || 'PDC'}kg
                                 </span>

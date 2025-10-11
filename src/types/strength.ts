@@ -8,6 +8,13 @@ export interface ExerciseLog {
   completed_at?: string
 }
 
+// 🆕 Nouvelle interface pour la performance précédente
+export interface PreviousPerformance {
+  reps_completed: number
+  weight_used?: number
+  session_date: string
+}
+
 export interface StrengthWorkoutState {
   currentExerciseIndex: number
   currentSet: number
@@ -15,9 +22,25 @@ export interface StrengthWorkoutState {
   restTimer: number
   isResting: boolean
   completedSets: number
+  // 🆕 Ajouter les performances précédentes dans le state
+  previousPerformances: Record<string, PreviousPerformance | null>
 }
 
 export interface SetInput {
   reps: number
   weight?: number
+}
+
+// 🆕 Interface pour les paramètres du hook
+export interface UseStrengthWorkoutProps {
+  exercises: Array<{
+    id: string
+    name: string
+    target_reps?: number
+    sets_count?: number
+    target_weight?: number
+    rest_seconds?: number
+  }>
+  sessionId: string
+  restTimeSeconds?: number
 }

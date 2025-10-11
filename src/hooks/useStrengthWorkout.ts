@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { StrengthWorkoutState, ExerciseLog, SetInput } from '@/types/strength'
+import { StrengthWorkoutState, ExerciseLog, SetInput, PreviousPerformance } from '@/types/strength'
 import type { Tables } from '@/integrations/supabase/types'
 import { supabase } from '@/lib/supabase'
 
@@ -25,7 +25,8 @@ export const useStrengthWorkout = ({
     exerciseLogs: [],
     restTimer: 0,
     isResting: false,
-    completedSets: 0
+    completedSets: 0,
+    previousPerformances: {} // 🆕 Nouveau champ
   })
 
   // Timer refs pour éviter les re-renders
@@ -139,6 +140,148 @@ export const useStrengthWorkout = ({
     }
   }, [sessionId, currentExercise, state.currentSet, totalSets, startRest])
 
+  // Ajouter une fonction pour récupérer les performances précédentes
+  const fetchPreviousPerformance = async (exerciseId: string) => {
+    if (!sessionId) return null
+  
+    try {
+      const { data, error } = await supabase
+        .from('exercise_logs')
+        .select('reps_completed, weight_used, created_at')
+        .eq('exercise_id', exerciseId)
+        .neq('session_id', sessionId) // Exclure la session actuelle
+        .order('created_at', { ascending: false })
+        .limit(1)
+    
+      if (error) {
+        console.warn('Erreur récupération performance précédente:', error)
+        return null
+      }
+    
+      return data?.[0] || null
+    } catch (error) {
+      console.warn('Erreur récupération performance précédente:', error)
+      return null
+    }
+  }
+
+  // Remplace la fonction fetchBestPreviousPerformance par :
+  const fetchBestPreviousPerformance = async (exerciseId: string): Promise<PreviousPerformance | null> => {
+    if (!sessionId) return null
+
+    const currentExercise = exercises.find(ex => ex.id === exerciseId)
+    if (!currentExercise?.name) return null
+
+    try {
+      console.log(`🔍 Recherche performance précédente pour "${currentExercise.name}"`)
+      
+      // 1. Récupérer tous les exercise_logs avec le même nom d'exercice
+      const { data: allExerciseLogs, error } = await supabase
+        .from('exercise_logs')
+        .select(`
+          session_id,
+          completed_at,
+          reps_completed,
+          weight_used,
+          set_number,
+          quest_exercises!inner(name)
+        `)
+        .eq('quest_exercises.name', currentExercise.name) // ← Recherche par nom !
+        .neq('session_id', sessionId) // Exclure session actuelle
+        .order('completed_at', { ascending: false })
+    
+      if (error) {
+        console.warn(`❌ Erreur recherche pour "${currentExercise.name}":`, error)
+        return null
+      }
+    
+      if (!allExerciseLogs?.length) {
+        console.log(`ℹ️ Aucune performance trouvée pour "${currentExercise.name}"`)
+        return null
+      }
+    
+      console.log(`📊 ${allExerciseLogs.length} logs trouvés pour "${currentExercise.name}"`)
+    
+      // 2. Grouper par session pour trouver la session la plus récente
+      const sessionGroups = allExerciseLogs.reduce((groups, log) => {
+        if (!groups[log.session_id]) {
+          groups[log.session_id] = {
+            date: log.completed_at,
+            sets: []
+          }
+        }
+        groups[log.session_id].sets.push(log)
+        return groups
+      }, {} as Record<string, { date: string, sets: any[] }>)
+    
+      // 3. Prendre la session la plus récente (déjà triée par completed_at DESC)
+      const latestSessionId = Object.keys(sessionGroups)[0]
+      const latestSession = sessionGroups[latestSessionId]
+    
+      console.log(`✅ Session la plus récente: ${latestSessionId} (${latestSession.date})`)
+      console.log(`📊 ${latestSession.sets.length} séries dans cette session`)
+    
+      // 4. Trouver la MEILLEURE série de cette session
+      const bestSet = latestSession.sets.reduce((best, current) => {
+        // Priorité 1: Plus de reps
+        if (current.reps_completed > best.reps_completed) {
+          return current
+        }
+        // Priorité 2: Même reps mais plus lourd
+        if (current.reps_completed === best.reps_completed && 
+            (current.weight_used || 0) > (best.weight_used || 0)) {
+          return current
+        }
+        return best
+      })
+    
+      console.log(`🏆 Meilleure série pour "${currentExercise.name}":`, bestSet)
+    
+      return {
+        reps_completed: bestSet.reps_completed,
+        weight_used: bestSet.weight_used,
+        session_date: latestSession.date
+      }
+    } catch (error) {
+      console.warn(`❌ Erreur générale pour "${currentExercise.name}":`, error)
+      return null
+    }
+  }
+
+  // Et dans useEffect, charger les performances précédentes :
+  useEffect(() => {
+    const loadPreviousPerformances = async () => {
+      console.log('🚀 Début chargement performances précédentes')
+      console.log('📋 Exercices reçus:', exercises.map(ex => ({ id: ex.id, name: ex.name })))
+      
+      const performances: Record<string, PreviousPerformance | null> = {}
+      
+      for (const exercise of exercises) {
+        console.log(`🔄 Traitement exercice: ${exercise.name} (ID: ${exercise.id})`)
+        const prevPerf = await fetchBestPreviousPerformance(exercise.id)
+        
+        if (prevPerf) {
+          console.log(`✅ Performance trouvée pour ${exercise.name}:`, prevPerf)
+          performances[exercise.id] = prevPerf
+        } else {
+          console.log(`ℹ️ Aucune performance trouvée pour ${exercise.name}`)
+          performances[exercise.id] = null
+        }
+      }
+      
+      console.log('📊 Performances finales:', performances)
+      
+      setState(prev => ({
+        ...prev,
+        previousPerformances: performances
+      }))
+    }
+  
+    if (exercises.length > 0 && sessionId) {
+      loadPreviousPerformances()
+    }
+  }, [exercises, sessionId])
+
   // 🧹 Cleanup moderne
   useEffect(() => {
     return () => {
@@ -160,6 +303,10 @@ export const useStrengthWorkout = ({
     setsRemaining,
     totalSets, // ← Nouveau
     exerciseRestTime, // ← Nouveau
+    previousPerformances: state.previousPerformances,
+    getCurrentExercisePreviousPerformance: () => {
+      return currentExercise ? state.previousPerformances[currentExercise.id] : null
+    },
     
     // Actions
     completeSet,
