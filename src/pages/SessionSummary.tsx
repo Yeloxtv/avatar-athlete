@@ -32,7 +32,7 @@ export default function SessionSummary() {
     getProgressionMessage 
   } = useSessionSummary({ quest, session, time: session?.total_time_seconds || 0 })
 
-  // Hook pour la validation (après génération du récap)
+  // Hook pour la validation
   const workoutValidation = useWorkoutValidation({
     quest,
     session,
@@ -40,7 +40,7 @@ export default function SessionSummary() {
     rounds: session?.rounds_completed || 0
   })
 
-  // Récupérer les données de session depuis sessionStorage ou API
+  // Chargement des données de session
   useEffect(() => {
     const loadSessionData = async () => {
       if (!questId || !profile?.user_id) return
@@ -73,7 +73,7 @@ export default function SessionSummary() {
         }
         setQuest(questWithExercises)
 
-        // 2. Récupérer la session la plus récente pour cette quest
+        // 2. Récupérer la session la plus récente
         const { data: sessionData, error: sessionError } = await supabase
           .from('workout_sessions')
           .select('*')
@@ -85,8 +85,6 @@ export default function SessionSummary() {
 
         if (sessionError) throw sessionError
         setSession(sessionData)
-
-        console.log('✅ Données de session chargées:', { quest: questWithExercises, session: sessionData })
 
       } catch (error) {
         console.error('❌ Erreur chargement session:', error)
@@ -104,20 +102,17 @@ export default function SessionSummary() {
     loadSessionData()
   }, [questId, profile?.user_id, navigate])
 
-  // Générer le récapitulatif dès que les données sont disponibles
+  // Génération du récapitulatif
   useEffect(() => {
     if (quest && session && !summaryLoading && !summary) {
-      console.log('🚀 Génération automatique du récapitulatif...')
       generateSummary()
     }
-  }, [quest, session, summaryLoading, summary, generateSummary])
+  }, [quest, session, summaryLoading, summary])
 
   const handleValidate = async () => {
     if (!quest || !session) return
 
     setIsValidating(true)
-    console.log('✅ Validation depuis le récapitulatif...')
-    
     try {
       await workoutValidation.validateWorkout()
     } catch (error) {
@@ -145,7 +140,7 @@ export default function SessionSummary() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center p-4">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
           <p className="text-muted-foreground">Chargement du récapitulatif...</p>
@@ -157,41 +152,45 @@ export default function SessionSummary() {
   // Error state
   if (!quest || !session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center p-4">
         <div className="text-center space-y-4">
           <div className="text-6xl">❌</div>
           <p className="text-muted-foreground">Données de séance introuvables</p>
-          <Button onClick={() => navigate('/campaign')}>Retour aux quêtes</Button>
+          <Button onClick={() => navigate('/campaign')} size="lg">
+            Retour aux quêtes
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-2 sm:p-4">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
         
-        {/* Header */}
-        <div className="flex items-center gap-4">
+        {/* Header - Mobile optimized */}
+        <div className="flex items-center gap-3 sm:gap-4">
           <Button
             onClick={handleBack}
             variant="outline"
             size="sm"
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 min-w-fit"
           >
             <ArrowLeft className="w-4 h-4" />
-            Retour
+            <span className="hidden sm:inline">Retour</span>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Récapitulatif de séance</h1>
-            <p className="text-muted-foreground">{quest.title}</p>
+            <h1 className="text-xl sm:text-2xl font-bold">Récapitulatif</h1>
+            <p className="text-sm sm:text-base text-muted-foreground truncate">
+              {quest.title}
+            </p>
           </div>
         </div>
 
         {/* Loading Summary */}
         {summaryLoading && (
           <Card className="border-accent/30">
-            <CardContent className="p-8 text-center">
+            <CardContent className="p-6 sm:p-8 text-center">
               <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-accent" />
               <p className="text-muted-foreground">Génération du récapitulatif...</p>
             </CardContent>
@@ -200,47 +199,47 @@ export default function SessionSummary() {
 
         {/* Summary Content */}
         {summary && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             
-            {/* Header - Félicitations - Style cohérent */}
+            {/* Félicitations - Mobile first */}
             <Card className="border-accent/30">
-              <CardContent className="p-6 text-center">
-                <div className="text-4xl mb-3">🎉</div>
-                <h2 className="text-2xl font-bold mb-2">
+              <CardContent className="p-4 sm:p-6 text-center">
+                <div className="text-3xl sm:text-4xl mb-3">🎉</div>
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">
                   Séance terminée !
                 </h2>
-                <p className="text-muted-foreground mb-6">
-                  {quest.title} • {formatTime(summary.totalTime)}
+                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
+                  {formatTime(summary.totalTime)}
                 </p>
                 
-                {/* Stats rapides - Grid propre */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-3 bg-muted/30 rounded-lg">
-                    <Clock className="w-5 h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-lg font-bold text-accent">
+                {/* Stats rapides - Mobile responsive */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
+                    <div className="text-sm sm:text-lg font-bold text-accent">
                       {formatTime(summary.totalTime)}
                     </div>
                     <div className="text-xs text-muted-foreground">Temps</div>
                   </div>
-                  <div className="p-3 bg-muted/30 rounded-lg">
-                    <Target className="w-5 h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-lg font-bold text-accent">
+                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
+                    <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
+                    <div className="text-sm sm:text-lg font-bold text-accent">
                       {formatVolume(summary.totalVolume)}
                     </div>
                     <div className="text-xs text-muted-foreground">Volume</div>
                   </div>
-                  <div className="p-3 bg-muted/30 rounded-lg">
-                    <Trophy className="w-5 h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-lg font-bold text-accent">
+                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
+                    <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
+                    <div className="text-sm sm:text-lg font-bold text-accent">
                       {summary.exercises.length}
                     </div>
                     <div className="text-xs text-muted-foreground">Exercices</div>
                   </div>
-                  <div className="p-3 bg-muted/30 rounded-lg">
-                    <div className="text-2xl mb-1">
+                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
+                    <div className="text-xl sm:text-2xl mb-1">
                       {getIntensityEmoji(summary.intensity)}
                     </div>
-                    <div className="text-sm font-medium text-accent">
+                    <div className="text-xs sm:text-sm font-medium text-accent">
                       {summary.intensity}
                     </div>
                     <div className="text-xs text-muted-foreground">Intensité</div>
@@ -249,50 +248,59 @@ export default function SessionSummary() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Grid responsive : 1 col mobile, 2 cols desktop */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
               
-              {/* Colonne gauche : Exercices + Validation */}
-              <div className="space-y-6">
+              {/* Colonne 1 : Exercices + Validation */}
+              <div className="space-y-4 sm:space-y-6">
                 
-                {/* Exercices détaillés */}
+                {/* Exercices */}
                 <Card className="border-accent/30">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Target className="w-5 h-5 text-accent" />
+                  <CardHeader className="pb-3 sm:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <Target className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
                       Exercices réalisés
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-3 sm:space-y-4">
                     {summary.exercises.map((exercise, index) => (
-                      <div key={index} className="p-4 bg-muted/30 rounded-lg">
+                      <div key={index} className="p-3 sm:p-4 bg-muted/30 rounded-lg">
                         <div className="flex justify-between items-start mb-3">
-                          <h4 className="font-medium text-lg">{exercise.exercise_name}</h4>
+                          <h4 className="font-medium text-sm sm:text-lg pr-2">
+                            {exercise.exercise_name}
+                          </h4>
                           {summary.progression.newRecords.includes(exercise.exercise_name) && (
-                            <Badge className="bg-yellow-500 text-white">
+                            <Badge className="bg-yellow-500 text-white text-xs">
                               🏆 Record !
                             </Badge>
                           )}
                         </div>
                         
-                        <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
                           <div className="text-center p-2 bg-background/50 rounded">
                             <div className="text-xs text-muted-foreground">Séries</div>
-                            <div className="text-xl font-bold text-accent">{exercise.sets_count}</div>
+                            <div className="text-lg sm:text-xl font-bold text-accent">
+                              {exercise.sets_count}
+                            </div>
                           </div>
                           <div className="text-center p-2 bg-background/50 rounded">
                             <div className="text-xs text-muted-foreground">Reps</div>
-                            <div className="text-xl font-bold text-accent">{exercise.reps_performed}</div>
+                            <div className="text-lg sm:text-xl font-bold text-accent">
+                              {exercise.reps_performed}
+                            </div>
                           </div>
                           <div className="text-center p-2 bg-background/50 rounded">
                             <div className="text-xs text-muted-foreground">Poids</div>
-                            <div className="text-xl font-bold text-accent">{exercise.weight_used}kg</div>
+                            <div className="text-lg sm:text-xl font-bold text-accent">
+                              {exercise.weight_used}kg
+                            </div>
                           </div>
                         </div>
                         
                         {exercise.volume > 0 && (
                           <div className="mt-3 pt-3 border-t border-muted/40 text-center">
-                            <span className="text-sm text-muted-foreground">Volume: </span>
-                            <span className="text-sm font-bold text-accent">
+                            <span className="text-xs sm:text-sm text-muted-foreground">Volume: </span>
+                            <span className="text-xs sm:text-sm font-bold text-accent">
                               {formatVolume(exercise.volume)}
                             </span>
                           </div>
@@ -302,41 +310,40 @@ export default function SessionSummary() {
                   </CardContent>
                 </Card>
 
-                {/* Actions - Bloc validation sous les exercices */}
+                {/* Validation - Mobile optimized */}
                 <Card className="border-accent/30">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Trophy className="w-5 h-5 text-accent" />
+                  <CardHeader className="pb-3 sm:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
                       Validation de la séance
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="text-center">
-                      <div className="text-4xl mb-3">🎁</div>
-                      <h3 className="text-lg font-semibold mb-2">
-                        Prêt à valider cette séance ?
+                      <div className="text-3xl sm:text-4xl mb-3">🎁</div>
+                      <h3 className="text-base sm:text-lg font-semibold mb-2">
+                        Prêt à valider ?
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        Validez pour recevoir vos récompenses et débloquer la suite !
+                        Validez pour recevoir vos récompenses !
                       </p>
                     </div>
 
                     <div className="space-y-3">
                       <Button
                         onClick={handleValidate}
-                        className="w-full bg-accent hover:bg-accent/90"
-                        size="lg"
+                        className="w-full bg-accent hover:bg-accent/90 h-12 text-base"
                         disabled={isValidating}
                       >
                         {isValidating ? (
                           <>
-                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                             Validation...
                           </>
                         ) : (
                           <>
-                            <Trophy className="w-5 h-5 mr-2" />
-                            Valider et recevoir les récompenses
+                            <Trophy className="w-4 h-4 mr-2" />
+                            Valider la séance
                           </>
                         )}
                       </Button>
@@ -344,7 +351,7 @@ export default function SessionSummary() {
                       <Button
                         onClick={handleBack}
                         variant="outline"
-                        className="w-full"
+                        className="w-full h-12"
                         disabled={isValidating}
                       >
                         Reprendre l'entraînement
@@ -352,25 +359,25 @@ export default function SessionSummary() {
                     </div>
 
                     <p className="text-center text-xs text-muted-foreground">
-                      🎁 Des badges et récompenses vous attendent !
+                      🎁 Badges et XP vous attendent !
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Colonne droite : Stats et progression */}
-              <div className="space-y-6">
+              {/* Colonne 2 : Stats et progression */}
+              <div className="space-y-4 sm:space-y-6">
                 
                 {/* Progression */}
                 <Card className="border-accent/30">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-accent" />
+                  <CardHeader className="pb-3 sm:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
                       Progression
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center p-4 bg-accent/5 rounded-lg">
+                  <CardContent>
+                    <div className="text-center p-3 sm:p-4 bg-accent/5 rounded-lg">
                       <div className="text-sm font-medium text-accent mb-1">
                         {getProgressionMessage(summary.progression)}
                       </div>
@@ -385,9 +392,9 @@ export default function SessionSummary() {
 
                 {/* Streak */}
                 <Card className="border-accent/30">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Zap className="w-5 h-5 text-accent" />
+                  <CardHeader className="pb-3 sm:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
                       Dynamique
                     </CardTitle>
                   </CardHeader>
@@ -396,7 +403,9 @@ export default function SessionSummary() {
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Cette semaine</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-accent">{summary.streak.thisWeek}</span>
+                          <span className="text-base sm:text-lg font-bold text-accent">
+                            {summary.streak.thisWeek}
+                          </span>
                           <span className="text-sm text-muted-foreground">séance(s)</span>
                         </div>
                       </div>
@@ -404,13 +413,15 @@ export default function SessionSummary() {
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">Streak actuel</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-accent">{summary.streak.consecutive}</span>
+                          <span className="text-base sm:text-lg font-bold text-accent">
+                            {summary.streak.consecutive}
+                          </span>
                           <span className="text-sm text-muted-foreground">jour(s)</span>
                           {summary.streak.consecutive >= 3 && <span>🔥</span>}
                         </div>
                       </div>
 
-                      {/* Barre de progression de la semaine */}
+                      {/* Barre de progression */}
                       <div className="mt-4">
                         <div className="flex justify-between text-xs text-muted-foreground mb-2">
                           <span>Objectif semaine</span>
@@ -418,24 +429,24 @@ export default function SessionSummary() {
                         </div>
                         <Progress 
                           value={(Math.min(summary.streak.thisWeek, 4) / 4) * 100} 
-                          className="h-3"
+                          className="h-2 sm:h-3"
                         />
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* XP gagnée */}
+                {/* XP */}
                 <Card className="border-accent/30">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Star className="w-5 h-5 text-accent" />
+                  <CardHeader className="pb-3 sm:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <Star className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
                       Expérience gagnée
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="text-center p-4 bg-accent/5 rounded-lg">
-                      <div className="text-3xl font-bold text-accent mb-1">
+                    <div className="text-center p-3 sm:p-4 bg-accent/5 rounded-lg">
+                      <div className="text-2xl sm:text-3xl font-bold text-accent mb-1">
                         +{summary.xp.total} XP
                       </div>
                       <div className="text-sm text-muted-foreground">Total gagné</div>
@@ -471,22 +482,10 @@ export default function SessionSummary() {
                 </Card>
               </div>
             </div>
-
-            {/* RPG Rewards Modal */}
-            <WorkoutRewardsModal
-              isOpen={workoutValidation.showRewardsModal}
-              onClose={workoutValidation.handleRewardsModalClose}
-              rewards={workoutValidation.rewardResults}
-              sessionData={{
-                rounds: session?.rounds_completed || 0,
-                totalTime: session?.total_time_seconds || 0,
-                questTitle: quest?.title
-              }}
-            />
           </div>
         )}
 
-        {/* RPG Rewards Modal */}
+        {/* Modal récompenses - UNE SEULE ! */}
         <WorkoutRewardsModal
           isOpen={workoutValidation.showRewardsModal}
           onClose={workoutValidation.handleRewardsModalClose}

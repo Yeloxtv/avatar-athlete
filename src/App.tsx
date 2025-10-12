@@ -8,7 +8,7 @@ import Campaign from "./pages/Campaign";
 import Training from "./pages/Training";
 import Dashboard from "./pages/Dashboard";
 import DevXpSandbox from "./pages/DevXpSandbox";
-import Profil from "./pages/Profil";
+import Profil from "./pages/Home";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 import Statistics from "./pages/Statistics";

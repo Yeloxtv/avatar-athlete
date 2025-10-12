@@ -4,17 +4,16 @@ import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase, Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
 import { RewardResult } from '@/types/rpg'
 import WorkoutTimer from '@/components/workout/shared/WorkoutTimer'
-import { Plus, Minus } from 'lucide-react'
+import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Plus, CheckCircle } from 'lucide-react'
 
-interface SessionSummary {
+interface SessionSummary { 
   rounds: number
   totalTime: number
   questTitle?: string
@@ -83,7 +82,7 @@ export default function HiitWorkoutInterface({
 
   const finishWorkout = () => {
     setSessionSummary({
-      rounds: totalRounds,
+      rounds: quest.workout_type === 'amrap' ? currentRound : 1, // Rounds seulement pour AMRAP
       totalTime: time,
       questTitle: quest?.title,
     })
@@ -107,7 +106,7 @@ export default function HiitWorkoutInterface({
           is_completed: true,
           ended_at: new Date().toISOString(),
           total_time_seconds: time,
-          rounds_completed: totalRounds,
+          rounds_completed: currentRound,  // ← Utiliser currentRound
         })
         .eq('id', session.id)
 
@@ -260,148 +259,171 @@ export default function HiitWorkoutInterface({
         onStart={onStart}
         onPause={onPause}
         onReset={onReset}
+        onFinishWorkout={onFinishWorkout}
+        onAddRound={onAddRound}
         isStrengthWorkout={false}
         quest={quest}
         workTime={workTime}
         isWorkPhase={isWorkPhase}
-        exerciseName={quest.exercises[exerciseIndex]?.name}
+        exerciseName={quest.exercises[exerciseIndex]?.name || ''}
         currentRound={currentRound}
-        onAddRound={onAddRound}
-        onFinishWorkout={onFinishWorkout}
-        roundTimes={roundTimes}         // ← AJOUTER
+        totalRounds={totalRounds} // ← AJOUTER cette prop
+        exerciseIndex={exerciseIndex}
       />
 
-      {/* Liste des exercices - Style cohérent avec musculation */}
+      {/* Liste des exercices - Version mobile ultra-compacte */}
       <Card className="border-accent/30">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <span>🎯</span>
-            Circuit d'exercices
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between text-base">
+            <div className="flex items-center gap-2">
+              <span>🎯</span>
+              <span>Circuit ({quest.exercises.length} exercices)</span>
+            </div>
+            
+            {/* Temps défini pour l'entraînement */}
+            {quest.total_minutes && quest.total_minutes > 0 && (
+              <div className="text-sm font-normal text-muted-foreground">
+                {quest.total_minutes} min
+              </div>
+            )}
+            
+            {/* Pour Tabata : afficher work/rest */}
+            {quest.workout_type === 'tabata' && quest.work_seconds && quest.rest_seconds && (
+              <div className="text-sm font-normal text-muted-foreground">
+                {quest.work_seconds}s / {quest.rest_seconds}s
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2">
           {quest.exercises.map((exercise, index) => {
             const isCurrentExercise = index === exerciseIndex
-            const isCompleted = false // Pour HIIT, pas de notion de "complété"
-            const isPrevious = false
             
-            // Style cohérent avec musculation
-            let cardClasses = "p-4 rounded-lg border transition-all duration-300"
-            let statusIcon = ""
-            let statusText = ""
-            
-            if (isCurrentExercise) {
-              cardClasses += " border-accent bg-accent/5 shadow-md ring-2 ring-accent/20"
-              statusIcon = "🔥"
-              statusText = "En cours"
-            } else {
-              cardClasses += " border-muted bg-muted/20"
-              statusIcon = "⏳"
-              statusText = "En attente"
-            }
-
             return (
-              <div key={exercise.id} className={cardClasses}>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{statusIcon}</span>
-                      <h4 className={`font-medium ${isCurrentExercise ? 'text-accent' : 'text-foreground'}`}>
-                        {exercise.name}
-                      </h4>
-                    </div>
-                    
-                    {/* Description si disponible */}
-                    {exercise.description && (
-                      <p className="text-sm text-muted-foreground mb-2">{exercise.description}</p>
-                    )}
-                    
-                    {/* Infos de l'exercice pour HIIT */}
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Position: </span>
-                        <span className="font-medium">{index + 1}/{quest.exercises.length}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Statut: </span>
-                        <span className={`font-medium ${isCurrentExercise ? 'text-accent' : 'text-muted-foreground'}`}>
-                          {statusText}
-                        </span>
-                      </div>
-                    </div>
+              <div 
+                key={exercise.id} 
+                className={`p-2 rounded border transition-all ${
+                  isCurrentExercise 
+                    ? 'border-accent bg-accent/5 shadow-sm' 
+                    : 'border-muted/40 bg-muted/10'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-sm">
+                      {isCurrentExercise ? '🔥' : index < exerciseIndex ? '✅' : '⏳'}
+                    </span>
+                    <span className={`text-sm truncate ${
+                      isCurrentExercise ? 'font-medium text-accent' : 'text-muted-foreground'
+                    }`}>
+                      {exercise.name}
+                    </span>
                   </div>
                   
-                  {/* Badge de statut */}
-                  {isCurrentExercise && (
-                    <Badge className="bg-accent/20 text-accent border-accent/30 animate-pulse">
-                      {statusIcon} {statusText}
-                    </Badge>
-                  )}
+                  <div className="text-xs text-muted-foreground shrink-0">
+                    {index + 1}/{quest.exercises.length}
+                  </div>
                 </div>
               </div>
             )
           })}
           
-          {/* Statistiques globales du circuit */}
-          <div className="mt-4 p-3 bg-accent/10 rounded-lg border border-accent/20">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <div className="text-lg font-bold text-accent">
-                  {quest.exercises.length}
-                </div>
-                <div className="text-muted-foreground">Exercices</div>
+          {/* Stats mini en bas - Avec infos timing */}
+          <div className="mt-3 p-2 bg-accent/5 rounded border border-accent/20">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-sm font-bold text-accent">{exerciseIndex + 1}</div>
+                <div className="text-xs text-muted-foreground">Actuel</div>
               </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-accent">
-                  {exerciseIndex + 1}
-                </div>
-                <div className="text-muted-foreground">En cours</div>
+              <div>
+                <div className="text-sm font-bold text-accent">{quest.exercises.length - exerciseIndex - 1}</div>
+                <div className="text-xs text-muted-foreground">Restants</div>
               </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-accent">
-                  {quest.exercises.length - exerciseIndex - 1}
-                </div>
-                <div className="text-muted-foreground">Restants</div>
+              <div>
+                {quest.workout_type === 'amrap' ? (
+                  <>
+                    <div className="text-sm font-bold text-accent">{currentRound}</div>
+                    <div className="text-xs text-muted-foreground">Rounds</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-bold text-accent">{formatTime(time)}</div>
+                    <div className="text-xs text-muted-foreground">Écoulé</div>
+                  </>
+                )}
               </div>
             </div>
+            
+            {/* Ligne d'infos supplémentaires selon le type */}
+            {(quest.total_minutes && quest.total_minutes > 0) || (quest.workout_type === 'tabata') ? (
+              <div className="mt-2 pt-2 border-t border-accent/20 text-xs text-center text-muted-foreground">
+                {quest.workout_type === 'amrap' && quest.total_minutes && (
+                  <span>Objectif: {quest.total_minutes} minutes • </span>
+                )}
+                {quest.workout_type === 'tabata' && quest.work_seconds && quest.rest_seconds && (
+                  <span>Format: {quest.work_seconds}s travail / {quest.rest_seconds}s repos</span>
+                )}
+                {quest.workout_type === 'circuit' && quest.total_minutes && (
+                  <span>Durée estimée: {quest.total_minutes} minutes</span>
+                )}
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
 
-      {/* Session Summary Dialog */}
+      {/* Session Summary Dialog - Version mobile */}
       <Dialog open={showSummary} onOpenChange={setShowSummary}>
-        <DialogContent className="max-w-md rpg-card">
+        <DialogContent className="max-w-sm mx-2 rpg-card">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl">🎉 Entraînement terminé !</DialogTitle>
-            <DialogDescription className="text-center">Félicitations pour cette séance HIIT !</DialogDescription>
+            <DialogTitle className="text-center text-lg">🎉 Terminé !</DialogTitle>
+            <DialogDescription className="text-center text-sm">
+              Séance HIIT complétée !
+            </DialogDescription>
           </DialogHeader>
 
           {sessionSummary && (
             <div className="space-y-4">
-              <div className="text-center space-y-2">
-                <div className="text-2xl font-bold text-primary">{formatTime(sessionSummary.totalTime)}</div>
-                <div className="text-muted-foreground">{sessionSummary.rounds} rounds complétés</div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="text-center text-muted-foreground">
-                  Prêt à valider cette séance et gagner des récompenses RPG ?
+              
+              {/* Stats compactes - Adaptées selon le type */}
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="p-2 bg-accent/5 rounded">
+                  <div className="text-lg font-bold text-accent">
+                    {formatTime(sessionSummary.totalTime)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Temps total</div>
                 </div>
-                <div className="text-sm text-center text-accent">⚡ Calcul automatique des XP et progression</div>
+                <div className="p-2 bg-accent/5 rounded">
+                  <div className="text-lg font-bold text-accent">
+                    {quest.workout_type === 'amrap' ? sessionSummary.rounds : quest.exercises.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {quest.workout_type === 'amrap' ? 'Rounds' : 'Exercices'}
+                  </div>
+                </div>
               </div>
 
-              <div className="flex gap-2">
+              {/* Message motivant */}
+              <div className="text-center">
+                <div className="text-sm text-muted-foreground mb-2">
+                  Prêt à valider et gagner des XP ?
+                </div>
+                <div className="text-xs text-accent">⚡ Progression automatique</div>
+              </div>
+
+              {/* Boutons mobiles */}
+              <div className="space-y-2">
                 <Button
                   onClick={validateWorkout}
-                  className="flex-1 hero-gradient text-white font-semibold"
+                  className="w-full bg-accent hover:bg-accent/90 h-12"
                   disabled={isProcessingRewards}
                 >
-                  {isProcessingRewards ? 'Traitement...' : 'Valider et Progresser'}
+                  {isProcessingRewards ? '⏳ Traitement...' : '🚀 Valider la séance'}
                 </Button>
                 <Button
                   onClick={() => setShowSummary(false)}
                   variant="outline"
-                  className="flex-1"
+                  className="w-full h-12"
                   disabled={isProcessingRewards}
                 >
                   Annuler

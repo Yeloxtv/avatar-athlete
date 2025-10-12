@@ -47,14 +47,14 @@ export const StrengthPerformanceInput = React.memo(({
           />
         </div>
         <div className="space-y-2">
-          <Label>Poids (kg) - Optionnel</Label>
+          <Label>Poids (kg)</Label>
           <Input
             type="number"
             step="0.5"
             value={weight || ''}
             onChange={(e) => setWeight(Number(e.target.value) || 0)}
             className="text-center text-lg"
-            placeholder="Laisser vide si poids du corps"
+            placeholder=""
           />
         </div>
       </div>

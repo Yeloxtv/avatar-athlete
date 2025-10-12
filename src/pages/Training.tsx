@@ -302,18 +302,16 @@ export default function Training() {
           session={workoutSession.session}
           time={workoutSession.time}
           isRunning={workoutSession.isRunning}
-          workTime={workoutSession.workTime}
+          workTime={hiitTimer.workTime}
           exerciseIndex={hiitTimer.exerciseIndex}
           isWorkPhase={hiitTimer.isWorkPhase}
-          currentRound={workoutSession.currentRound}
-          totalRounds={workoutSession.rounds}
-          roundTimes={workoutSession.roundTimes}
-          onStart={() => workoutSession.setIsRunning(true)}
+          currentRound={hiitTimer.currentRound}
+          totalRounds={quest.rounds || 1} // ← S'assurer qu'on passe le bon nombre de tours
+          roundTimes={hiitTimer.roundTimes}
+          onStart={startWorkout}
           onPause={workoutSession.pauseWorkout}
           onReset={workoutSession.resetWorkout}
-          onNextExercise={hiitTimer.nextExercise}
-          onPrevExercise={hiitTimer.prevExercise}
-          onAddRound={workoutSession.addRound}
+          onAddRound={hiitTimer.addRound}
           onFinishWorkout={finishWorkout}
         />
 

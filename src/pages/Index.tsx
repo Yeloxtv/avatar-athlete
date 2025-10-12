@@ -1,7 +1,7 @@
 import { useAuth } from '@/hooks/useAuth'
 import { useProfile } from '@/hooks/useProfile'
 import Auth from './Auth'
-import Profil from './Profil'
+import Profil from './Home'
 
 export default function Index() {
   const { user, loading: authLoading } = useAuth()

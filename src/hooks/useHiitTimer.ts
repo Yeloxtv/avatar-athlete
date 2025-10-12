@@ -22,6 +22,9 @@ export function useHiitTimer({
 }: UseHiitTimerProps) {
   const [exerciseIndex, setExerciseIndex] = useState(0)
   const [isWorkPhase, setIsWorkPhase] = useState(true)
+  const [currentRound, setCurrentRound] = useState(1)
+  const [totalRounds, setTotalRounds] = useState(1)
+  const [roundTimes, setRoundTimes] = useState<any[]>([])
 
   // Timer principal
   useEffect(() => {
@@ -92,22 +95,40 @@ export function useHiitTimer({
   }, [workTime, isRunning, isStrengthWorkout, quest])
 
   const nextExercise = () => {
-    if (quest && exerciseIndex < (quest.exercises?.length || 1) - 1) {
+    if (quest && exerciseIndex < quest.exercises.length - 1) {
       setExerciseIndex(prev => prev + 1)
     }
   }
 
-  const prevExercise = () => {
+  const previousExercise = () => {
     if (exerciseIndex > 0) {
       setExerciseIndex(prev => prev - 1)
     }
   }
 
+  const addRound = () => {
+    console.log('➕ addRound appelée - Round ajouté!')
+    setCurrentRound(prev => prev + 1)
+    setTotalRounds(prev => prev + 1)
+    
+    // Optionnel : ajouter le temps du round actuel
+    if (roundTimes) {
+      setRoundTimes(prev => [...prev, { round: currentRound, time: workTime || 0 }])
+    }
+  }
+
   return {
+    // États HIIT
+    workTime,
     exerciseIndex,
     isWorkPhase,
-    nextExercise,
-    prevExercise,
-    setExerciseIndex
+    currentRound,
+    totalRounds,
+    roundTimes,
+    
+    // Actions HIIT
+    addRound,
+    
+    // ... autres propriétés
   }
 }
