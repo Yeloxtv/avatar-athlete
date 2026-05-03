@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase, Quest, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, WorkoutSession } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 
 interface UseWorkoutSessionProps {
@@ -43,7 +44,7 @@ export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
       const { data: newSession, error } = await supabase
         .from('workout_sessions')
         .insert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           workout_type: quest.workout_type,  // ← AJOUTER cette ligne
           started_at: new Date().toISOString(),

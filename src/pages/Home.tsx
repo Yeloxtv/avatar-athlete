@@ -1,468 +1,238 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase } from '@/lib/supabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { supabase } from '@/integrations/supabase/client'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MapPin, Zap, Dumbbell, Timer, Target, Users, Flame, Clock } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar } from 'lucide-react'
 
-interface Campaign {
+const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+
+interface PersonalQuest {
+  id: string
+  title: string
+  day_of_week: number
+  exercises_count: number
+  estimated_duration: number
+}
+
+interface PersonalProgram {
+  id: string
+  slug: string
+  title: string
+  quests: PersonalQuest[]
+}
+
+interface PublicCampaign {
   id: string
   title: string
   description: string
   slug: string
-  is_active: boolean
-  total_quests?: number
-  completed_quests?: number
-  quests?: Array<{
-    id: string
-    user_quests?: Array<{ status: string }>
-  }>
-}
-
-interface HiitWorkout {
-  id: string
-  title: string
-  description: string
-  workout_type: 'amrap' | 'emom' | 'tabata' | 'fortime'
-  total_minutes: number
-  exercises_count: number
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD'
-  exercises?: Array<{ id: string }>
-}
-
-interface StrengthWorkout {
-  id: string
-  title: string
-  description: string
-  category?: 'upper' | 'lower' | 'fullbody'
-  exercises_count: number
-  estimated_duration?: number // ← Rendre optionnel car calculé
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD'
-  quest_exercises?: Array<{ id: string }>
+  total_quests: number
+  completed_quests: number
 }
 
 export default function Home() {
   const { profile } = useProfile()
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [hiitWorkouts, setHiitWorkouts] = useState<HiitWorkout[]>([])
-  const [strengthWorkouts, setStrengthWorkouts] = useState<StrengthWorkout[]>([])
+  const [personalProgram, setPersonalProgram] = useState<PersonalProgram | null>(null)
+  const [publicCampaigns, setPublicCampaigns] = useState<PublicCampaign[]>([])
   const [loading, setLoading] = useState(true)
-  
-  // ✅ AJOUTER : États pour les filtres
-  const [selectedHiitType, setSelectedHiitType] = useState<string>('all')
+  const [activeDayIndex, setActiveDayIndex] = useState(() => {
+    // 0=Lun ... 6=Dim, JS: 0=Dim 1=Lun ... 6=Sam
+    const jsDay = new Date().getDay()
+    return jsDay === 0 ? 6 : jsDay - 1
+  })
 
   useEffect(() => {
-    fetchHomeData()
+    if (profile) fetchHomeData()
   }, [profile])
 
   const fetchHomeData = async () => {
     if (!profile) return
-
     try {
-      // Récupérer les campagnes avec progression
+      // Programme perso (owner_user_id = mon profil)
+      const { data: personalData } = await supabase
+        .from('campaigns')
+        .select(`
+          id, slug, title,
+          quests(id, title, order_index, day_of_week, quest_exercises(id))
+        `)
+        .eq('owner_user_id', profile.id)
+        .eq('is_active', true)
+        .limit(1)
+        .single()
+
+      if (personalData) {
+        const quests = (personalData.quests || [])
+          .filter(q => q.day_of_week !== null)
+          .map(q => ({
+            id: q.id,
+            title: q.title,
+            day_of_week: q.day_of_week as number,
+            exercises_count: q.quest_exercises?.length || 0,
+            estimated_duration: Math.max(45, (q.quest_exercises?.length || 0) * 6),
+          }))
+        setPersonalProgram({ id: personalData.id, slug: personalData.slug, title: personalData.title, quests })
+      }
+
+      // Campagnes publiques (sans owner)
       const { data: campaignsData } = await supabase
         .from('campaigns')
         .select(`
-          id, title, description, slug, is_active,
-          quests!inner(
-            id,
-            user_quests!left(status)
-          )
+          id, title, description, slug,
+          quests!inner(id, user_quests!left(status))
         `)
+        .is('owner_user_id', null)
         .eq('is_active', true)
+        .eq('is_published', true)
         .order('created_at', { ascending: true })
 
-      // Transformer les données de campagnes
-      const processedCampaigns = campaignsData?.map(campaign => ({
-        ...campaign,
-        total_quests: campaign.quests?.length || 0,
-        completed_quests: campaign.quests?.filter(quest => 
-          quest.user_quests?.some(uq => uq.status === 'completed')
-        ).length || 0
-      })) || []
-
-      setCampaigns(processedCampaigns)
-
-      // ✅ CORRIGER : Utiliser quest_exercises au lieu d'exercises
-      const { data: hiitData, error: hiitError } = await supabase
-        .from('quests')
-        .select('id, title, description, workout_type, total_minutes, quest_exercises(id)')
-        .in('workout_type', ['amrap', 'emom', 'tabata', 'fortime'])
-        .eq('is_one_shot', true)
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-      console.log('HIIT Data:', hiitData, 'Error:', hiitError) // ← Debug
-
-      const processedHiit = hiitData?.map(workout => ({
-        ...workout,
-        exercises_count: workout.quest_exercises?.length || 0, // ← Utiliser quest_exercises
-        difficulty: 'MEDIUM' as const
-      })) || []
-
-      setHiitWorkouts(processedHiit)
-
-      // ✅ CORRIGER : Enlever estimated_duration qui n'existe pas
-      const { data: strengthData, error: strengthError } = await supabase
-        .from('quests')
-        .select('id, title, description, quest_exercises(id)')
-        .eq('workout_type', 'strength')
-        .eq('is_one_shot', true)
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-      console.log('Strength Data:', strengthData, 'Error:', strengthError) // ← Debug
-
-      const processedStrength = strengthData?.map(workout => {
-        const exerciseCount = workout.quest_exercises?.length || 0
-        // Estimer 5-7 minutes par exercice + repos
-        const estimatedDuration = Math.max(30, exerciseCount * 6)
-        
-        return {
-          ...workout,
-          exercises_count: exerciseCount,
-          estimated_duration: estimatedDuration,
-          difficulty: exerciseCount > 8 ? 'HARD' : exerciseCount > 5 ? 'MEDIUM' : 'EASY' as const,
-          category: 'fullbody' as const
-        }
-      }) || []
-
-      setStrengthWorkouts(processedStrength)
+      const processed = (campaignsData || []).map(c => ({
+        id: c.id,
+        title: c.title,
+        description: c.description || '',
+        slug: c.slug,
+        total_quests: c.quests?.length || 0,
+        completed_quests: c.quests?.filter((q: any) =>
+          q.user_quests?.some((uq: any) => uq.status === 'completed')
+        ).length || 0,
+      }))
+      setPublicCampaigns(processed)
 
     } catch (error) {
-      console.error('Erreur lors du chargement:', error)
+      console.error(error)
     } finally {
       setLoading(false)
     }
   }
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'EASY': return 'bg-green-500/20 text-green-400 border-green-500/30'
-      case 'MEDIUM': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-      case 'HARD': return 'bg-red-500/20 text-red-400 border-red-500/30'
-      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-    }
-  }
-
-  const getHiitTypeIcon = (type: string) => {
-    switch (type) {
-      case 'amrap': return <Target className="w-4 h-4" />
-      case 'emom': return <Clock className="w-4 h-4" />
-      case 'tabata': return <Zap className="w-4 h-4" />
-      case 'fortime': return <Timer className="w-4 h-4" />
-      default: return <Flame className="w-4 h-4" />
-    }
-  }
-
-  const getHiitTypeName = (type: string) => {
-    switch (type) {
-      case 'amrap': return 'AMRAP'
-      case 'emom': return 'EMOM'
-      case 'tabata': return 'Tabata'
-      case 'fortime': return 'For Time'
-      default: return 'HIIT'
-    }
-  }
-
-  const getStrengthCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'upper': return '💪'
-      case 'lower': return '🦵'
-      case 'fullbody': return '🏋️'
-      default: return '💪'
-    }
-  }
-
-  const getStrengthCategoryName = (category: string) => {
-    switch (category) {
-      case 'upper': return 'Haut du corps'
-      case 'lower': return 'Bas du corps'
-      case 'fullbody': return 'Full Body'
-      default: return 'Musculation'
-    }
-  }
-
-  // ✅ AJOUTER : Fonction de filtrage HIIT
-  const getFilteredHiitWorkouts = () => {
-    if (selectedHiitType === 'all') {
-      return hiitWorkouts
-    }
-    return hiitWorkouts.filter(workout => workout.workout_type === selectedHiitType)
-  }
+  const todayQuest = personalProgram?.quests.find(q => q.day_of_week === activeDayIndex) ?? null
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8"> {/* ← Design existant */}
-        <div className="text-center py-20">
-          <div className="animate-spin w-8 h-8 border-4 border-accent border-t-transparent rounded-full mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Chargement...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin w-8 h-8 border-4 border-accent border-t-transparent rounded-full" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background container mx-auto px-4 py-8 space-y-8">
-      
+    <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-8">
+
       {/* Header */}
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold">
-          Salut {profile?.first_name || 'Athlète'} ! 👋
-        </h1>
-        <p className="text-xl text-muted-foreground">
-          Prêt à t'entraîner aujourd'hui ?
-        </p>
+      <div>
+        <h1 className="text-2xl font-bold">Salut {profile?.display_name || 'Athlète'} 👋</h1>
+        <p className="text-muted-foreground text-sm mt-1">Prêt à t'entraîner ?</p>
       </div>
 
-      {/* Navigation par onglets */}
-      <Tabs defaultValue="campaigns" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
-          <TabsTrigger value="campaigns" className="flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            <span className="hidden sm:inline">Campagnes</span>
-          </TabsTrigger>
-          <TabsTrigger value="hiit" className="flex items-center gap-2">
-            <Zap className="w-4 h-4" />
-            <span className="hidden sm:inline">HIIT</span>
-          </TabsTrigger>
-          <TabsTrigger value="strength" className="flex items-center gap-2">
-            <Dumbbell className="w-4 h-4" />
-            <span className="hidden sm:inline">Musculation</span>
-          </TabsTrigger>
-        </TabsList>
-
-        {/* CAMPAGNES */}
-        <TabsContent value="campaigns" className="space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
-              <MapPin className="w-6 h-6 text-accent" />
-              Campagnes d'entraînement
+      {/* MON PROGRAMME */}
+      {personalProgram && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-lg flex items-center gap-2">
+              <Dumbbell className="w-5 h-5 text-accent" />
+              Mon programme
             </h2>
-            <p className="text-muted-foreground">
-              Suis un programme structuré avec progression et histoire
-            </p>
+            <Link to={`/campaign/${personalProgram.slug}`} className="text-xs text-accent flex items-center gap-1">
+              Voir tout <ChevronRight className="w-3 h-3" />
+            </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {campaigns.map((campaign) => (
-              <Card key={campaign.id} className="rpg-card hover:scale-105 transition-transform">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="truncate">{campaign.title}</span>
-                    <Badge variant="outline" className="bg-accent/10">
-                      <Users className="w-3 h-3 mr-1" />
-                      Campagne
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {campaign.description}
-                  </p>
-                  
-                  {/* Progression */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span>Progression</span>
-                      <span>{campaign.completed_quests}/{campaign.total_quests} quêtes</span>
-                    </div>
-                    <Progress 
-                      value={campaign.total_quests ? (campaign.completed_quests! / campaign.total_quests) * 100 : 0} 
-                      className="h-2"
-                    />
+          {/* Sélecteur jour */}
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {DAYS.map((day, i) => {
+              const quest = personalProgram.quests.find(q => q.day_of_week === i)
+              const isActive = i === activeDayIndex
+              const hasSession = !!quest
+              return (
+                <button
+                  key={day}
+                  onClick={() => setActiveDayIndex(i)}
+                  className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground shadow-lg scale-105'
+                      : hasSession
+                      ? 'bg-muted/60 text-foreground hover:bg-muted'
+                      : 'bg-muted/30 text-muted-foreground'
+                  }`}
+                >
+                  <span>{day}</span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${hasSession ? (isActive ? 'bg-accent-foreground' : 'bg-accent') : 'bg-transparent'}`} />
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Séance du jour sélectionné */}
+          {todayQuest ? (
+            <Card className="border border-accent/30 bg-accent/5">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{DAYS[activeDayIndex]}</p>
+                    <h3 className="font-bold text-lg leading-tight">{todayQuest.title}</h3>
                   </div>
-
-                  <Button asChild className="w-full">
-                    <Link to={`/campaign/${campaign.slug}`}>
-                      Continuer l'aventure
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* HIIT */}
-        <TabsContent value="hiit" className="space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
-              <Zap className="w-6 h-6 text-accent" />
-              Entraînements HIIT
-            </h2>
-            <p className="text-muted-foreground">
-              Intensité maximale pour des résultats rapides
-            </p>
-          </div>
-
-          {/* Sous-catégories HIIT - RENDRE CLIQUABLES */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            {/* ✅ AJOUTER : Option "Tous" */}
-            <Card 
-              className={`text-center p-4 cursor-pointer transition-colors ${
-                selectedHiitType === 'all' 
-                  ? 'bg-accent/20 border-accent ring-2 ring-accent/50' 
-                  : 'hover:bg-accent/5'
-              }`}
-              onClick={() => setSelectedHiitType('all')}
-            >
-              <div className="flex flex-col items-center gap-2">
-                <Flame className="w-4 h-4" />
-                <h3 className="font-semibold">Tous</h3>
-                <p className="text-xs text-muted-foreground">Tous les HIIT</p>
-              </div>
-            </Card>
-
-            {[
-              { type: 'amrap', name: 'AMRAP', desc: 'Maximum de rounds' },
-              { type: 'emom', name: 'EMOM', desc: 'Chaque minute' },
-              { type: 'tabata', name: 'Tabata', desc: '20s/10s' },
-              { type: 'fortime', name: 'For Time', desc: 'Le plus vite possible' }
-            ].map((category) => (
-              <Card 
-                key={category.type} 
-                className={`text-center p-4 cursor-pointer transition-colors ${
-                  selectedHiitType === category.type 
-                    ? 'bg-accent/20 border-accent ring-2 ring-accent/50' 
-                    : 'hover:bg-accent/5'
-                }`}
-                onClick={() => setSelectedHiitType(category.type)}
-              >
-                <div className="flex flex-col items-center gap-2">
-                  {getHiitTypeIcon(category.type)}
-                  <h3 className="font-semibold">{category.name}</h3>
-                  <p className="text-xs text-muted-foreground">{category.desc}</p>
+                  <div className="text-right text-xs text-muted-foreground">
+                    <div className="font-semibold text-foreground">{todayQuest.estimated_duration} min</div>
+                    <div>{todayQuest.exercises_count} exercices</div>
+                  </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {getFilteredHiitWorkouts().map((workout) => (
-              <Card key={workout.id} className="rpg-card hover:scale-105 transition-transform">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <span className="truncate">{workout.title}</span>
-                    <div className="flex gap-1">
-                      <Badge variant="outline" className="text-xs">
-                        {getHiitTypeIcon(workout.workout_type)}
-                        <span className="ml-1">{getHiitTypeName(workout.workout_type)}</span>
-                      </Badge>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {workout.description}
-                  </p>
-                  
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className="font-bold">{workout.total_minutes}</div>
-                      <div className="text-muted-foreground">min</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className="font-bold">{workout.exercises_count}</div>
-                      <div className="text-muted-foreground">exercices</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className={`text-xs px-2 py-1 rounded border font-medium ${getDifficultyColor(workout.difficulty)}`}>
-                        {workout.difficulty}
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button asChild className="w-full">
-                    <Link to={`/train/${workout.id}`}>
-                      Commencer
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* ✅ AJOUTER : Message si aucun résultat */}
-          {getFilteredHiitWorkouts().length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">
-                Aucun entraînement {selectedHiitType !== 'all' ? getHiitTypeName(selectedHiitType) : ''} disponible pour le moment.
-              </p>
-            </div>
+                <Button asChild className="w-full">
+                  <Link to={`/train/${todayQuest.id}`}>C'est parti</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-4 text-center text-muted-foreground text-sm">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                Repos ce jour
+              </CardContent>
+            </Card>
           )}
-        </TabsContent>
+        </section>
+      )}
 
-        {/* MUSCULATION */}
-        <TabsContent value="strength" className="space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
-              <Dumbbell className="w-6 h-6 text-accent" />
-              Entraînements Musculation
-            </h2>
-            <p className="text-muted-foreground">
-              Développe ta force et ta masse musculaire
-            </p>
-          </div>
+      {/* CAMPAGNES PUBLIQUES */}
+      {publicCampaigns.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="font-semibold text-lg flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-accent" />
+            Explorer
+          </h2>
 
-          {/* Affichage direct des entraînements - SANS catégories */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {strengthWorkouts.map((workout) => (
-              <Card key={workout.id} className="rpg-card hover:scale-105 transition-transform">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <span className="truncate">{workout.title}</span>
-                    <Badge variant="outline" className="text-xs">
-                      <span className="mr-1">{getStrengthCategoryIcon(workout.category || 'fullbody')}</span>
-                      {getStrengthCategoryName(workout.category || 'fullbody')}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {workout.description}
-                  </p>
-                  
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className="font-bold">{workout.estimated_duration}</div>
-                      <div className="text-muted-foreground">min</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className="font-bold">{workout.exercises_count}</div>
-                      <div className="text-muted-foreground">exercices</div>
-                    </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <div className={`text-xs px-2 py-1 rounded border font-medium ${getDifficultyColor(workout.difficulty)}`}>
-                        {workout.difficulty}
+          <div className="space-y-3">
+            {publicCampaigns.map(campaign => {
+              const progress = campaign.total_quests
+                ? Math.round((campaign.completed_quests / campaign.total_quests) * 100)
+                : 0
+              return (
+                <Card key={campaign.id} className="rpg-card">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">{campaign.title}</h3>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{campaign.description}</p>
                       </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {campaign.completed_quests}/{campaign.total_quests}
+                      </span>
                     </div>
-                  </div>
-
-                  <Button asChild className="w-full">
-                    <Link to={`/train/${workout.id}`}>
-                      Commencer
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                    <Progress value={progress} className="h-1.5" />
+                    <Button asChild variant="outline" className="w-full" size="sm">
+                      <Link to={`/campaign/${campaign.slug}`}>
+                        {campaign.completed_quests > 0 ? 'Continuer' : 'Commencer'}
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
+        </section>
+      )}
 
-          {/* Message si aucun entraînement */}
-          {strengthWorkouts.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">
-                Aucun entraînement de musculation disponible pour le moment.
-              </p>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
     </div>
   )
 }

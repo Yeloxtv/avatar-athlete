@@ -151,7 +151,7 @@ export class XpService {
   // Convertir un profil Supabase en PlayerProfile RPG
   static profileToPlayerProfile(profile: any): PlayerProfile {
     return {
-      id: profile.user_id,
+      id: profile.id,
       level: XpService.calculateLevelFromXp(profile.xp_total || 0),
       currentXp: profile.xp_total || 0,
       totalXp: profile.xp_total || 0,

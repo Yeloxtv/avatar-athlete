@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import React from 'react'
 import { Quest } from '@/lib/supabase'
 
 interface UseHiitTimerProps {
@@ -6,9 +7,9 @@ interface UseHiitTimerProps {
   isStrengthWorkout: boolean
   isRunning: boolean
   time: number
-  setTime: (time: number) => void
+  setTime: React.Dispatch<React.SetStateAction<number>>
   workTime: number
-  setWorkTime: (workTime: number) => void
+  setWorkTime: React.Dispatch<React.SetStateAction<number>>
 }
 
 export function useHiitTimer({ 

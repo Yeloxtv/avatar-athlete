@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
-import { supabase, Quest, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, WorkoutSession } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { RewardResult } from '@/types/rpg'
 
@@ -53,7 +54,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -95,7 +96,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
       console.log('📊 Enregistrement de l\'audit XP...')
       try {
         const { error: auditError } = await supabase.from('audit_xp').insert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -130,7 +131,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
         const { error: nextQuestError } = await supabase
           .from('user_quests')
           .upsert({
-            user_id: profile.user_id,
+            user_id: profile.id,
             quest_id: nextQuest.id,
             status: 'available',  // ← Changer 'todo' en 'available'
           }, {
@@ -186,7 +187,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
       const { data: completedSessions, error: sessionsError } = await supabase
         .from('user_quests')
         .select('id')
-        .eq('user_id', profile.user_id)
+        .eq('user_id', profile.id)
         .eq('status', 'completed')
       
       if (sessionsError) {
@@ -249,7 +250,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
       const { data: existingBadge, error: checkError } = await supabase
         .from('user_badges')
         .select('id')
-        .eq('user_id', profile!.user_id)
+        .eq('user_id', profile!.id)
         .eq('badge_id', badge.id)
         .maybeSingle()
 
@@ -267,7 +268,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
       const { error: insertError } = await supabase
         .from('user_badges')
         .insert({
-          user_id: profile!.user_id,
+          user_id: profile!.id,
           badge_id: badge.id,
           earned_at: new Date().toISOString()
         })

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase, Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -60,13 +61,13 @@ export default function Training() {
 
   // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
-    if (questId && profile?.user_id) {
+    if (questId && profile?.id) {
       void fetchQuest()
     }
-  }, [questId, profile?.user_id])
+  }, [questId, profile?.id])
 
   const fetchQuest = async () => {
-    if (!questId || !profile?.user_id) return
+    if (!questId || !profile?.id) return
     try {
       const { data: questRows, error: questError } = await supabase
         .from('quests')
@@ -106,7 +107,7 @@ export default function Training() {
         const { data: sessions, error: sessErr } = await supabase
           .from('workout_sessions')
           .select('*')
-          .eq('user_id', profile.user_id)
+          .eq('user_id', profile.id)
           .eq('quest_id', questId)
           .eq('is_completed', false)
           .order('created_at', { ascending: false })
@@ -155,14 +156,14 @@ export default function Training() {
       const { error: updateError } = await supabase
         .from('user_quests')
         .update({ status: 'available' })
-        .eq('user_id', profile.user_id)
+        .eq('user_id', profile.id)
         .eq('quest_id', quest.id)
 
       if (updateError) {
         await supabase
           .from('user_quests')
           .insert({
-            user_id: profile.user_id,
+            user_id: profile.id,
             quest_id: quest.id,
             status: 'available',
           })

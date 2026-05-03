@@ -1,40 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase, Quest, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, WorkoutSession } from '@/lib/supabase'
 
 interface ExercisePerformance {
+  exercise_id: string
   exercise_name: string
-  sets_count: number
-  reps_performed: number
-  weight_used: number
-  volume: number // sets × reps × weight
+  sets: Array<{ set_number: number; reps: number; weight: number }>
+  best_weight: number
+  total_reps: number
+  volume: number
 }
 
 interface SessionSummary {
-  // Données de base
   totalTime: number
-  totalVolume: number // kg totaux poussés
+  totalVolume: number
   exercises: ExercisePerformance[]
-  
-  // Stats motivantes
   intensity: 'Légère' | 'Modérée' | 'Intense'
-  progression: {
-    volumeVsPrevious: number | null // % de progression
-    newRecords: string[] // exercices avec nouveau record
-  }
   streak: {
-    consecutive: number // jours consécutifs
-    thisWeek: number // séances cette semaine
+    consecutive: number
+    thisWeek: number
   }
-  
-  // Récompenses
-  badges: Array<{
-    id: string
-    name: string
-    description: string
-    icon: string
-    isNew: boolean
-  }>
   xp: {
     force: number
     endurance: number
@@ -55,127 +41,97 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const calculateThisWeekSessions = async (): Promise<number> => {
-    if (!profile?.user_id) return 1
-    
-    try {
-      const oneWeekAgo = new Date()
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-      
-      const { data: weekSessions, error } = await supabase
-        .from('workout_sessions')
-        .select('id')
-        .eq('user_id', profile.user_id)
-        .eq('is_completed', true)
-        .gte('ended_at', oneWeekAgo.toISOString())
-      
-      if (error) {
-        console.warn('⚠️ Erreur calcul séances semaine:', error)
-        return 1
-      }
-      
-      return (weekSessions?.length || 0) + 1 // +1 pour la séance actuelle
-    } catch (error) {
-      console.warn('⚠️ Erreur calcul séances semaine:', error)
-      return 1
-    }
-  }
-
   const generateSummary = async (): Promise<SessionSummary | null> => {
-    if (!quest || !session || !profile) {
-      console.log('❌ Données manquantes pour générer le récapitulatif')
-      return null
-    }
+    if (!quest || !session || !profile) return null
 
     setLoading(true)
-    console.log('📊 Génération du récapitulatif de séance...')
-
     try {
-      // 1. Vérifier s'il y a des données de performance
-      console.log('🔍 Recherche des données de performance...')
-      
-      let performanceData = null
-      let hasRealData = false
-      
-      // Essayer session_rounds
-      const { data: roundsData, error: roundsError } = await supabase
-        .from('session_rounds')
-        .select('*')
+      // Charger les vrais exercise_logs de la séance
+      const { data: logs } = await supabase
+        .from('exercise_logs')
+        .select('exercise_id, set_number, reps_completed, weight_used, quest_exercises(name)')
         .eq('session_id', session.id)
-      
-      console.log('🔍 session_rounds result:', { data: roundsData, error: roundsError })
-      
-      if (roundsData && roundsData.length > 0) {
-        performanceData = roundsData
-        hasRealData = true
-        console.log('✅ Données réelles trouvées dans session_rounds')
-      }
+        .order('exercise_id')
+        .order('set_number')
 
-      // Si pas de données réelles, créer un récap intelligent basé sur la quest
-      if (!hasRealData) {
-        console.log('⚠️ Pas de données de performance, création d\'un récap intelligent...')
-        
-        // Récap basé sur les exercices de la quest avec des valeurs par défaut intelligentes
-        const exercises: ExercisePerformance[] = quest.exercises.map(ex => {
-          // Utiliser les valeurs de la quest si disponibles, sinon des défauts intelligents
-          const sets = ex.sets_count || 3
-          const reps = ex.target_reps || 10
-          const weight = ex.target_weight || (ex.name.toLowerCase().includes('squat') ? 60 : 
-                         ex.name.toLowerCase().includes('deadlift') ? 80 :
-                         ex.name.toLowerCase().includes('bench') ? 50 : 30)
-          
-          return {
-            exercise_name: ex.name,
-            sets_count: sets,
-            reps_performed: reps,
-            weight_used: weight,
-            volume: sets * reps * weight
-          }
-        })
+      // Compter séances cette semaine
+      const oneWeekAgo = new Date()
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
+      const { data: weekSessions } = await supabase
+        .from('workout_sessions')
+        .select('id')
+        .eq('user_id', profile.id)
+        .eq('is_completed', true)
+        .gte('ended_at', oneWeekAgo.toISOString())
 
-        const totalVolume = exercises.reduce((sum, ex) => sum + ex.volume, 0)
+      const thisWeek = (weekSessions?.length || 0) + 1
 
-        // Déterminer l'intensité basée sur le temps et les exercices
-        const timeMinutes = time / 60
-        let intensity: SessionSummary['intensity'] = 'Légère'
-        
-        if (timeMinutes < 20) intensity = 'Légère'
-        else if (timeMinutes < 45) intensity = 'Modérée'
-        else intensity = 'Intense'
+      let exercises: ExercisePerformance[] = []
+      let totalVolume = 0
 
-        const sessionSummary: SessionSummary = {
-          totalTime: time,
-          totalVolume,
-          exercises,
-          intensity,
-          progression: {
-            volumeVsPrevious: null, // Pas de comparaison sans données historiques
-            newRecords: [] // Pas de records sans données
-          },
-          streak: {
-            consecutive: 1, // Valeur par défaut
-            thisWeek: await calculateThisWeekSessions() // Fonction pour calculer vraiment
-          },
-          badges: [], // Sera rempli par la validation
-          xp: {
-            force: quest.xp_force || 0,
-            endurance: quest.xp_endurance || 0,
-            agilite: quest.xp_agilite || 0,
-            mental: quest.xp_mental || 0,
-            total: (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0)
-          }
+      if (logs && logs.length > 0) {
+        // Grouper les logs par exercice
+        const grouped = new Map<string, typeof logs>()
+        for (const log of logs) {
+          if (!grouped.has(log.exercise_id)) grouped.set(log.exercise_id, [])
+          grouped.get(log.exercise_id)!.push(log)
         }
 
-        console.log('✅ Récapitulatif intelligent créé:', sessionSummary)
-        setSummary(sessionSummary)
-        return sessionSummary
+        exercises = Array.from(grouped.entries()).map(([exerciseId, sets]) => {
+          const name = (sets[0].quest_exercises as any)?.name || 'Exercice'
+          const setsData = sets.map(s => ({
+            set_number: s.set_number,
+            reps: s.reps_completed,
+            weight: Number(s.weight_used) || 0,
+          }))
+          const best_weight = Math.max(...setsData.map(s => s.weight))
+          const total_reps = setsData.reduce((sum, s) => sum + s.reps, 0)
+          const volume = setsData.reduce((sum, s) => sum + s.reps * s.weight, 0)
+          totalVolume += volume
+          return { exercise_id: exerciseId, exercise_name: name, sets: setsData, best_weight, total_reps, volume }
+        })
+      } else {
+        // Fallback sur les cibles de la quest si pas de logs
+        exercises = (quest.exercises || []).map(ex => {
+          const sets = ex.sets_count || 3
+          const reps = ex.target_reps || 10
+          const weight = Number(ex.target_weight) || 0
+          const volume = sets * reps * weight
+          totalVolume += volume
+          return {
+            exercise_id: ex.id,
+            exercise_name: ex.name,
+            sets: Array.from({ length: sets }, (_, i) => ({ set_number: i + 1, reps, weight })),
+            best_weight: weight,
+            total_reps: sets * reps,
+            volume,
+          }
+        })
       }
 
-      // Si on a des données réelles, les traiter (logique future)
-      console.log('🔄 Traitement des données réelles...')
-      // ... logique pour traiter les vraies données
+      const timeMinutes = (time || session.total_time_seconds || 0) / 60
+      const intensity: SessionSummary['intensity'] =
+        timeMinutes < 20 ? 'Légère' : timeMinutes < 50 ? 'Modérée' : 'Intense'
+
+      const sessionSummary: SessionSummary = {
+        totalTime: time || session.total_time_seconds || 0,
+        totalVolume,
+        exercises,
+        intensity,
+        streak: { consecutive: 1, thisWeek },
+        xp: {
+          force: quest.xp_force || 0,
+          endurance: quest.xp_endurance || 0,
+          agilite: quest.xp_agilite || 0,
+          mental: quest.xp_mental || 0,
+          total: (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
+        },
+      }
+
+      setSummary(sessionSummary)
+      return sessionSummary
     } catch (error) {
-      console.error('❌ Erreur génération récapitulatif:', error)
+      console.error('Erreur génération récapitulatif:', error)
       return null
     } finally {
       setLoading(false)
@@ -183,10 +139,8 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
   }
 
   const formatVolume = (kg: number): string => {
-    if (kg >= 1000) {
-      return `${(kg / 1000).toFixed(1)} tonnes`
-    }
-    return `${kg.toLocaleString()} kg`
+    if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`
+    return `${Math.round(kg)} kg`
   }
 
   const getIntensityEmoji = (intensity: SessionSummary['intensity']): string => {
@@ -194,44 +148,10 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
       case 'Intense': return '🔥'
       case 'Modérée': return '💪'
       case 'Légère': return '🌱'
-      default: return '💪'
     }
   }
 
-  const getProgressionMessage = (progression: SessionSummary['progression']): string => {
-    if (progression.volumeVsPrevious === null) {
-      return "Première séance de ce type ! 🎯"
-    }
-    
-    if (progression.volumeVsPrevious > 0) {
-      return `+${progression.volumeVsPrevious}% vs dernière fois ! 📈`
-    } else if (progression.volumeVsPrevious < 0) {
-      return `${progression.volumeVsPrevious}% vs dernière fois. Repos actif ! 🧘‍♂️`
-    } else {
-      return "Performance stable ! 💪"
-    }
-  }
+  const getProgressionMessage = (): string => "Séance enregistrée !"
 
-  const getMotivationalMessage = (summary: SessionSummary): string => {
-    if (!summary) return ""
-    
-    const messages = [
-      `💪 Bravo ! Tu as soulevé ${formatVolume(summary.totalVolume)} aujourd'hui !`,
-      `🔥 ${summary.totalTime > 1800 ? 'Session longue' : 'Session efficace'} de ${Math.round(summary.totalTime/60)} minutes !`,
-      `🎯 ${summary.exercises.length} exercices maîtrisés avec une intensité ${summary.intensity.toLowerCase()} !`,
-      `⚡ ${summary.streak.thisWeek} séance${summary.streak.thisWeek > 1 ? 's' : ''} cette semaine, tu es sur la bonne voie !`
-    ]
-    
-    return messages[Math.floor(Math.random() * messages.length)]
-  }
-
-  return {
-    summary,
-    loading,
-    generateSummary,
-    formatVolume,
-    getIntensityEmoji,
-    getProgressionMessage,
-    getMotivationalMessage
-  }
+  return { summary, loading, generateSummary, formatVolume, getIntensityEmoji, getProgressionMessage }
 }

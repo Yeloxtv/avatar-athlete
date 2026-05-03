@@ -29,7 +29,7 @@ export function useBadges() {
         .from('badges')
         .select(`
           *,
-          user_badges(unlocked_at)
+          user_badges!left(unlocked_at, user_id)
         `)
 
       if (error) throw error

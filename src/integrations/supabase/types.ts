@@ -101,6 +101,7 @@ export type Database = {
           is_active: boolean | null
           is_published: boolean | null
           level_required: string | null
+          owner_user_id: string | null
           slug: string
           title: string
         }
@@ -113,6 +114,7 @@ export type Database = {
           is_active?: boolean | null
           is_published?: boolean | null
           level_required?: string | null
+          owner_user_id?: string | null
           slug: string
           title: string
         }
@@ -125,6 +127,7 @@ export type Database = {
           is_active?: boolean | null
           is_published?: boolean | null
           level_required?: string | null
+          owner_user_id?: string | null
           slug?: string
           title?: string
         }
@@ -196,6 +199,9 @@ export type Database = {
           order_index: number
           quest_id: string
           target_reps?: number | null
+          sets_count?: number | null
+          target_weight?: number | null
+          rest_seconds?: number | null
         }
         Update: {
           created_at?: string
@@ -205,6 +211,9 @@ export type Database = {
           order_index?: number
           quest_id?: string
           target_reps?: number | null
+          sets_count?: number | null
+          target_weight?: number | null
+          rest_seconds?: number | null
         }
         Relationships: [
           {
@@ -220,6 +229,7 @@ export type Database = {
         Row: {
           campaign_id: string
           created_at: string
+          day_of_week: number | null
           description: string | null
           equipment_tags: string[] | null
           estimated_duration_minutes: number | null
@@ -244,6 +254,7 @@ export type Database = {
         Insert: {
           campaign_id: string
           created_at?: string
+          day_of_week?: number | null
           description?: string | null
           equipment_tags?: string[] | null
           estimated_duration_minutes?: number | null
@@ -268,6 +279,7 @@ export type Database = {
         Update: {
           campaign_id?: string
           created_at?: string
+          day_of_week?: number | null
           description?: string | null
           equipment_tags?: string[] | null
           estimated_duration_minutes?: number | null
@@ -404,6 +416,7 @@ export type Database = {
           ended_at: string | null
           id: string
           is_completed: boolean | null
+          note: string | null
           quest_id: string
           rounds_completed: number | null
           started_at: string
@@ -416,6 +429,7 @@ export type Database = {
           ended_at?: string | null
           id?: string
           is_completed?: boolean | null
+          note?: string | null
           quest_id: string
           rounds_completed?: number | null
           started_at?: string

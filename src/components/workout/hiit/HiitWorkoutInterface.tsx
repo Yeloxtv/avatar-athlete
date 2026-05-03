@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
-import { supabase, Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -120,7 +121,7 @@ export default function HiitWorkoutInterface({
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -157,7 +158,7 @@ export default function HiitWorkoutInterface({
       console.log('📊 Enregistrement de l\'audit XP...')
       try {
         const { error: auditError } = await supabase.from('audit_xp').insert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -192,7 +193,7 @@ export default function HiitWorkoutInterface({
         const { error: nextQuestError } = await supabase
           .from('user_quests')
           .upsert({
-            user_id: profile.user_id,
+            user_id: profile.id,
             quest_id: nextQuest.id,
             status: 'todo',
           }, {

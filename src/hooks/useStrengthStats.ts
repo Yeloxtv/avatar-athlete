@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
 
 interface PersonalRecord {
   name: string
@@ -42,7 +42,7 @@ export const useStrengthStats = () => {
           created_at,
           quests!inner(workout_type)
         `)
-        .eq('user_id', profile.user_id)
+        .eq('user_id', profile.id)
         .eq('quests.workout_type', 'strength') // Seulement musculation
         // ❌ SUPPRIMÉ : .eq('is_completed', true)
 
@@ -59,7 +59,7 @@ export const useStrengthStats = () => {
             quests!inner(workout_type)
           )
         `)
-        .eq('workout_sessions.user_id', profile.user_id)
+        .eq('workout_sessions.user_id', profile.id)
         .eq('workout_sessions.quests.workout_type', 'strength')
         // ❌ SUPPRIMÉ : .eq('workout_sessions.is_completed', true)
 
@@ -100,7 +100,7 @@ export const useStrengthStats = () => {
     if (!profile?.user_id) return
 
     try {
-      console.log('🔍 Récupération historique exercices pour user:', profile.user_id)
+      console.log('🔍 Récupération historique exercices pour user:', profile.id)
       
       // 🔥 NOUVELLE REQUÊTE : Plus simple, on récupère TOUS les logs
       const { data, error } = await supabase
@@ -115,7 +115,7 @@ export const useStrengthStats = () => {
             quests!inner(workout_type)
           )
         `)
-        .eq('workout_sessions.user_id', profile.user_id)
+        .eq('workout_sessions.user_id', profile.id)
         .eq('workout_sessions.quests.workout_type', 'strength')
         // ❌ SUPPRIMÉ : .eq('workout_sessions.is_completed', true)
         .order('completed_at', { ascending: false })

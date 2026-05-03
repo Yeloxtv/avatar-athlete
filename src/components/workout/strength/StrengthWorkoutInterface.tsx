@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
-import { supabase, Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -50,10 +51,10 @@ export default function StrengthWorkoutInterface({
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
 
-  // Hook pour musculation
+  // Hook pour musculation — session?.id peut changer après startWorkout, le hook se réinit via useEffect interne
   const strengthWorkout = useStrengthWorkout({
     exercises: quest?.exercises || [],
-    sessionId: session?.id || '',
+    sessionId: session?.id ?? '',
     restTimeSeconds: 60
   })
 
@@ -103,7 +104,7 @@ export default function StrengthWorkoutInterface({
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -140,7 +141,7 @@ export default function StrengthWorkoutInterface({
       console.log('📊 Enregistrement de l\'audit XP...')
       try {
         const { error: auditError } = await supabase.from('audit_xp').insert({
-          user_id: profile.user_id,
+          user_id: profile.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -175,7 +176,7 @@ export default function StrengthWorkoutInterface({
         const { error: nextQuestUnlockError } = await supabase
           .from('user_quests')
           .upsert({
-            user_id: profile.user_id,
+            user_id: profile.id,
             quest_id: nextQuest.id,
             status: 'todo',
           }, {

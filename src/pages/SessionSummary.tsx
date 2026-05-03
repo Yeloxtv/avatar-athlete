@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { useSessionSummary } from '@/hooks/useSessionSummary'
 import { useWorkoutValidation } from '@/hooks/useWorkoutValidation'
-import { supabase, Quest, WorkoutSession } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
+import { Quest, WorkoutSession } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
+import { Textarea } from '@/components/ui/textarea'
 import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
-import { ArrowLeft, Clock, TrendingUp, Trophy, Zap, Target, Star, Loader2 } from 'lucide-react'
+import { ArrowLeft, Clock, Dumbbell, Trophy, Zap, Flame, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 export default function SessionSummary() {
@@ -21,482 +21,278 @@ export default function SessionSummary() {
   const [session, setSession] = useState<WorkoutSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [isValidating, setIsValidating] = useState(false)
+  const [note, setNote] = useState('')
+  const [noteSaved, setNoteSaved] = useState(false)
+  const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
 
-  // Hook pour le récapitulatif
-  const { 
-    summary, 
-    loading: summaryLoading, 
-    generateSummary, 
-    formatVolume, 
-    getIntensityEmoji, 
-    getProgressionMessage 
-  } = useSessionSummary({ quest, session, time: session?.total_time_seconds || 0 })
+  const { summary, loading: summaryLoading, generateSummary, formatVolume, getIntensityEmoji } = useSessionSummary({
+    quest,
+    session,
+    time: session?.total_time_seconds || 0,
+  })
 
-  // Hook pour la validation
   const workoutValidation = useWorkoutValidation({
     quest,
     session,
     time: session?.total_time_seconds || 0,
-    rounds: session?.rounds_completed || 0
+    rounds: session?.rounds_completed || 0,
   })
 
-  // Chargement des données de session
   useEffect(() => {
-    const loadSessionData = async () => {
-      if (!questId || !profile?.user_id) return
-
+    const load = async () => {
+      if (!questId || !profile?.id) return
       try {
-        // 1. Récupérer la quest
         const { data: questData, error: questError } = await supabase
           .from('quests')
-          .select(`
-            *,
-            quest_exercises(
-              id,
-              name,
-              target_reps,
-              order_index,
-              notes,
-              sets_count,
-              target_weight,
-              rest_seconds
-            )
-          `)
+          .select('*, quest_exercises(id, name, target_reps, order_index, notes, sets_count, target_weight, rest_seconds)')
           .eq('id', questId)
           .single()
-
         if (questError) throw questError
-        
-        const questWithExercises = {
-          ...questData,
-          exercises: questData.quest_exercises || []
-        }
-        setQuest(questWithExercises)
+        setQuest({ ...questData, exercises: questData.quest_exercises || [] })
 
-        // 2. Récupérer la session la plus récente
         const { data: sessionData, error: sessionError } = await supabase
           .from('workout_sessions')
           .select('*')
-          .eq('user_id', profile.user_id)
+          .eq('user_id', profile.id)
           .eq('quest_id', questId)
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
-
         if (sessionError) throw sessionError
         setSession(sessionData)
-
+        setNote((sessionData as any).note || '')
       } catch (error) {
-        console.error('❌ Erreur chargement session:', error)
-        toast({
-          title: 'Erreur',
-          description: 'Impossible de charger les données de la séance',
-          variant: 'destructive',
-        })
-        navigate('/campaign')
+        console.error(error)
+        toast({ title: 'Erreur', description: 'Impossible de charger la séance', variant: 'destructive' })
+        navigate('/')
       } finally {
         setLoading(false)
       }
     }
+    load()
+  }, [questId, profile?.id])
 
-    loadSessionData()
-  }, [questId, profile?.user_id, navigate])
-
-  // Génération du récapitulatif
   useEffect(() => {
     if (quest && session && !summaryLoading && !summary) {
       generateSummary()
     }
   }, [quest, session, summaryLoading, summary])
 
+  const handleSaveNote = async () => {
+    if (!session) return
+    const { error } = await supabase
+      .from('workout_sessions')
+      .update({ note })
+      .eq('id', session.id)
+    if (!error) setNoteSaved(true)
+  }
+
   const handleValidate = async () => {
     if (!quest || !session) return
-
     setIsValidating(true)
     try {
       await workoutValidation.validateWorkout()
     } catch (error) {
-      console.error('❌ Erreur validation:', error)
-      toast({
-        title: 'Erreur de validation',
-        description: 'Une erreur est survenue lors de la validation',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erreur de validation', variant: 'destructive' })
     } finally {
       setIsValidating(false)
     }
   }
 
-  const handleBack = () => {
-    navigate(`/training/${questId}`)
-  }
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    return `${mins}min${secs > 0 ? ` ${secs}s` : ''}`
   }
 
-  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center p-4">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-accent" />
-          <p className="text-muted-foreground">Chargement du récapitulatif...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     )
   }
 
-  // Error state
   if (!quest || !session) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center p-4">
-        <div className="text-center space-y-4">
-          <div className="text-6xl">❌</div>
-          <p className="text-muted-foreground">Données de séance introuvables</p>
-          <Button onClick={() => navigate('/campaign')} size="lg">
-            Retour aux quêtes
-          </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <p className="text-muted-foreground">Données de séance introuvables</p>
+        <Button onClick={() => navigate('/')}>Retour</Button>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-2 sm:p-4">
-      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
-        
-        {/* Header - Mobile optimized */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Button
-            onClick={handleBack}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 min-w-fit"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Retour</span>
-          </Button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Récapitulatif</h1>
-            <p className="text-sm sm:text-base text-muted-foreground truncate">
-              {quest.title}
-            </p>
-          </div>
+    <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-5">
+
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <div>
+          <h1 className="text-xl font-bold">Séance terminée 🎉</h1>
+          <p className="text-sm text-muted-foreground">{quest.title}</p>
         </div>
+      </div>
 
-        {/* Loading Summary */}
-        {summaryLoading && (
-          <Card className="border-accent/30">
-            <CardContent className="p-6 sm:p-8 text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-accent" />
-              <p className="text-muted-foreground">Génération du récapitulatif...</p>
-            </CardContent>
-          </Card>
-        )}
+      {summaryLoading && (
+        <div className="text-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-accent" />
+          <p className="text-sm text-muted-foreground">Calcul du récapitulatif...</p>
+        </div>
+      )}
 
-        {/* Summary Content */}
-        {summary && (
-          <div className="space-y-4 sm:space-y-6">
-            
-            {/* Félicitations - Mobile first */}
-            <Card className="border-accent/30">
-              <CardContent className="p-4 sm:p-6 text-center">
-                <div className="text-3xl sm:text-4xl mb-3">🎉</div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                  Séance terminée !
-                </h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
-                  {formatTime(summary.totalTime)}
-                </p>
-                
-                {/* Stats rapides - Mobile responsive */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
-                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-sm sm:text-lg font-bold text-accent">
-                      {formatTime(summary.totalTime)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Temps</div>
-                  </div>
-                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
-                    <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-sm sm:text-lg font-bold text-accent">
-                      {formatVolume(summary.totalVolume)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Volume</div>
-                  </div>
-                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
-                    <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-2 text-accent" />
-                    <div className="text-sm sm:text-lg font-bold text-accent">
-                      {summary.exercises.length}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Exercices</div>
-                  </div>
-                  <div className="p-3 sm:p-4 bg-muted/30 rounded-lg">
-                    <div className="text-xl sm:text-2xl mb-1">
-                      {getIntensityEmoji(summary.intensity)}
-                    </div>
-                    <div className="text-xs sm:text-sm font-medium text-accent">
-                      {summary.intensity}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Intensité</div>
-                  </div>
-                </div>
+      {summary && (
+        <>
+          {/* Stats rapides */}
+          <div className="grid grid-cols-3 gap-3">
+            <Card>
+              <CardContent className="p-3 text-center">
+                <Clock className="w-4 h-4 mx-auto mb-1 text-accent" />
+                <div className="font-bold text-sm">{formatTime(summary.totalTime)}</div>
+                <div className="text-xs text-muted-foreground">Durée</div>
               </CardContent>
             </Card>
-
-            {/* Grid responsive : 1 col mobile, 2 cols desktop */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
-              
-              {/* Colonne 1 : Exercices + Validation */}
-              <div className="space-y-4 sm:space-y-6">
-                
-                {/* Exercices */}
-                <Card className="border-accent/30">
-                  <CardHeader className="pb-3 sm:pb-6">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Target className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-                      Exercices réalisés
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 sm:space-y-4">
-                    {summary.exercises.map((exercise, index) => (
-                      <div key={index} className="p-3 sm:p-4 bg-muted/30 rounded-lg">
-                        <div className="flex justify-between items-start mb-3">
-                          <h4 className="font-medium text-sm sm:text-lg pr-2">
-                            {exercise.exercise_name}
-                          </h4>
-                          {summary.progression.newRecords.includes(exercise.exercise_name) && (
-                            <Badge className="bg-yellow-500 text-white text-xs">
-                              🏆 Record !
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-sm">
-                          <div className="text-center p-2 bg-background/50 rounded">
-                            <div className="text-xs text-muted-foreground">Séries</div>
-                            <div className="text-lg sm:text-xl font-bold text-accent">
-                              {exercise.sets_count}
-                            </div>
-                          </div>
-                          <div className="text-center p-2 bg-background/50 rounded">
-                            <div className="text-xs text-muted-foreground">Reps</div>
-                            <div className="text-lg sm:text-xl font-bold text-accent">
-                              {exercise.reps_performed}
-                            </div>
-                          </div>
-                          <div className="text-center p-2 bg-background/50 rounded">
-                            <div className="text-xs text-muted-foreground">Poids</div>
-                            <div className="text-lg sm:text-xl font-bold text-accent">
-                              {exercise.weight_used}kg
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {exercise.volume > 0 && (
-                          <div className="mt-3 pt-3 border-t border-muted/40 text-center">
-                            <span className="text-xs sm:text-sm text-muted-foreground">Volume: </span>
-                            <span className="text-xs sm:text-sm font-bold text-accent">
-                              {formatVolume(exercise.volume)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                {/* Validation - Mobile optimized */}
-                <Card className="border-accent/30">
-                  <CardHeader className="pb-3 sm:pb-6">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-                      Validation de la séance
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <div className="text-3xl sm:text-4xl mb-3">🎁</div>
-                      <h3 className="text-base sm:text-lg font-semibold mb-2">
-                        Prêt à valider ?
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Validez pour recevoir vos récompenses !
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      <Button
-                        onClick={handleValidate}
-                        className="w-full bg-accent hover:bg-accent/90 h-12 text-base"
-                        disabled={isValidating}
-                      >
-                        {isValidating ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Validation...
-                          </>
-                        ) : (
-                          <>
-                            <Trophy className="w-4 h-4 mr-2" />
-                            Valider la séance
-                          </>
-                        )}
-                      </Button>
-                      
-                      <Button
-                        onClick={handleBack}
-                        variant="outline"
-                        className="w-full h-12"
-                        disabled={isValidating}
-                      >
-                        Reprendre l'entraînement
-                      </Button>
-                    </div>
-
-                    <p className="text-center text-xs text-muted-foreground">
-                      🎁 Badges et XP vous attendent !
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Colonne 2 : Stats et progression */}
-              <div className="space-y-4 sm:space-y-6">
-                
-                {/* Progression */}
-                <Card className="border-accent/30">
-                  <CardHeader className="pb-3 sm:pb-6">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-                      Progression
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center p-3 sm:p-4 bg-accent/5 rounded-lg">
-                      <div className="text-sm font-medium text-accent mb-1">
-                        {getProgressionMessage(summary.progression)}
-                      </div>
-                      {summary.progression.newRecords.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          🏆 {summary.progression.newRecords.length} nouveau(x) record(s) !
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Streak */}
-                <Card className="border-accent/30">
-                  <CardHeader className="pb-3 sm:pb-6">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-                      Dynamique
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Cette semaine</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-base sm:text-lg font-bold text-accent">
-                            {summary.streak.thisWeek}
-                          </span>
-                          <span className="text-sm text-muted-foreground">séance(s)</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Streak actuel</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-base sm:text-lg font-bold text-accent">
-                            {summary.streak.consecutive}
-                          </span>
-                          <span className="text-sm text-muted-foreground">jour(s)</span>
-                          {summary.streak.consecutive >= 3 && <span>🔥</span>}
-                        </div>
-                      </div>
-
-                      {/* Barre de progression */}
-                      <div className="mt-4">
-                        <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                          <span>Objectif semaine</span>
-                          <span>{Math.min(summary.streak.thisWeek, 4)}/4</span>
-                        </div>
-                        <Progress 
-                          value={(Math.min(summary.streak.thisWeek, 4) / 4) * 100} 
-                          className="h-2 sm:h-3"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* XP */}
-                <Card className="border-accent/30">
-                  <CardHeader className="pb-3 sm:pb-6">
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Star className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-                      Expérience gagnée
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center p-3 sm:p-4 bg-accent/5 rounded-lg">
-                      <div className="text-2xl sm:text-3xl font-bold text-accent mb-1">
-                        +{summary.xp.total} XP
-                      </div>
-                      <div className="text-sm text-muted-foreground">Total gagné</div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {summary.xp.force > 0 && (
-                        <div className="flex justify-between items-center p-2 bg-background/50 rounded">
-                          <span className="text-sm text-muted-foreground">💪 Force</span>
-                          <span className="font-bold text-accent">+{summary.xp.force}</span>
-                        </div>
-                      )}
-                      {summary.xp.endurance > 0 && (
-                        <div className="flex justify-between items-center p-2 bg-background/50 rounded">
-                          <span className="text-sm text-muted-foreground">🏃 Endurance</span>
-                          <span className="font-bold text-accent">+{summary.xp.endurance}</span>
-                        </div>
-                      )}
-                      {summary.xp.agilite > 0 && (
-                        <div className="flex justify-between items-center p-2 bg-background/50 rounded">
-                          <span className="text-sm text-muted-foreground">⚡ Agilité</span>
-                          <span className="font-bold text-accent">+{summary.xp.agilite}</span>
-                        </div>
-                      )}
-                      {summary.xp.mental > 0 && (
-                        <div className="flex justify-between items-center p-2 bg-background/50 rounded">
-                          <span className="text-sm text-muted-foreground">🧠 Mental</span>
-                          <span className="font-bold text-accent">+{summary.xp.mental}</span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <Card>
+              <CardContent className="p-3 text-center">
+                <Dumbbell className="w-4 h-4 mx-auto mb-1 text-accent" />
+                <div className="font-bold text-sm">{formatVolume(summary.totalVolume)}</div>
+                <div className="text-xs text-muted-foreground">Volume</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 text-center">
+                <div className="text-lg mb-0.5">{getIntensityEmoji(summary.intensity)}</div>
+                <div className="font-bold text-sm">{summary.intensity}</div>
+                <div className="text-xs text-muted-foreground">Intensité</div>
+              </CardContent>
+            </Card>
           </div>
-        )}
 
-        {/* Modal récompenses - UNE SEULE ! */}
-        <WorkoutRewardsModal
-          isOpen={workoutValidation.showRewardsModal}
-          onClose={workoutValidation.handleRewardsModalClose}
-          rewards={workoutValidation.rewardResults}
-          sessionData={{
-            rounds: session?.rounds_completed || 0,
-            totalTime: session?.total_time_seconds || 0,
-            questTitle: quest?.title
-          }}
-        />
-      </div>
+          {/* Exercices réalisés */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-accent" />
+                Exercices
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {summary.exercises.map((ex) => (
+                <div key={ex.exercise_id} className="rounded-lg border border-muted/40 overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between p-3 text-left hover:bg-muted/20 transition-colors"
+                    onClick={() => setExpandedExercise(expandedExercise === ex.exercise_id ? null : ex.exercise_id)}
+                  >
+                    <div>
+                      <div className="font-medium text-sm">{ex.exercise_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {ex.sets.length} séries · {ex.best_weight > 0 ? `${ex.best_weight}kg max` : `${ex.total_reps} reps`}
+                        {ex.volume > 0 ? ` · ${formatVolume(ex.volume)}` : ''}
+                      </div>
+                    </div>
+                    {expandedExercise === ex.exercise_id
+                      ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                      : <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    }
+                  </button>
+
+                  {expandedExercise === ex.exercise_id && (
+                    <div className="px-3 pb-3 space-y-1 border-t border-muted/30 pt-2">
+                      {ex.sets.map((set) => (
+                        <div key={set.set_number} className="flex items-center justify-between text-sm py-1">
+                          <span className="text-muted-foreground">Série {set.set_number}</span>
+                          <span className="font-medium">
+                            {set.reps} reps{set.weight > 0 ? ` × ${set.weight}kg` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* XP gagné */}
+          {summary.xp.total > 0 && (
+            <Card className="border-accent/30 bg-accent/5">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-accent" />
+                  <span className="font-semibold">XP gagné</span>
+                </div>
+                <span className="text-xl font-bold text-accent">+{summary.xp.total}</span>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Streak */}
+          <Card>
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Flame className="w-5 h-5 text-orange-400" />
+                <span className="text-sm font-medium">Cette semaine</span>
+              </div>
+              <span className="font-bold">{summary.streak.thisWeek} séance{summary.streak.thisWeek > 1 ? 's' : ''}</span>
+            </CardContent>
+          </Card>
+
+          {/* Note de séance */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Note de séance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Textarea
+                placeholder="Comment s'est passée la séance ? Douleurs, sensations, objectifs pour la prochaine fois..."
+                value={note}
+                onChange={(e) => { setNote(e.target.value); setNoteSaved(false) }}
+                rows={3}
+                className="resize-none text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveNote}
+                disabled={noteSaved}
+                className="w-full"
+              >
+                {noteSaved ? '✓ Note enregistrée' : 'Enregistrer la note'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Valider */}
+          <Button
+            onClick={handleValidate}
+            className="w-full h-12 text-base"
+            disabled={isValidating}
+          >
+            {isValidating ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Validation...</>
+            ) : (
+              <><Trophy className="w-4 h-4 mr-2" />Valider et récolter les récompenses</>
+            )}
+          </Button>
+
+          <Button variant="ghost" className="w-full" onClick={() => navigate(`/training/${questId}`)}>
+            Reprendre l'entraînement
+          </Button>
+        </>
+      )}
+
+      <WorkoutRewardsModal
+        isOpen={workoutValidation.showRewardsModal}
+        onClose={workoutValidation.handleRewardsModalClose}
+        rewards={workoutValidation.rewardResults}
+        sessionData={{
+          rounds: session?.rounds_completed || 0,
+          totalTime: session?.total_time_seconds || 0,
+          questTitle: quest?.title,
+        }}
+      />
     </div>
   )
 }

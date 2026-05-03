@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { StrengthWorkoutState, ExerciseLog, SetInput, PreviousPerformance } from '@/types/strength'
 import type { Tables } from '@/integrations/supabase/types'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/integrations/supabase/client'
 
 // Types extraits des tables Supabase
 type QuestExercise = Tables<'quest_exercises'>

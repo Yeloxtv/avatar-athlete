@@ -1,81 +1,218 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { supabase } from '@/integrations/supabase/client'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, TrendingUp, Dumbbell, Activity } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Dumbbell, Clock, Trophy, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import StrengthStatistics from '@/components/statistics/StrenghStatistics'
+
+interface SessionLog {
+  id: string
+  quest_id: string
+  quest_title: string
+  started_at: string
+  total_time_seconds: number
+  note: string | null
+  exercise_logs: Array<{
+    exercise_id: string
+    exercise_name: string
+    sets: Array<{ set_number: number; reps: number; weight: number }>
+    best_weight: number
+    total_reps: number
+    volume: number
+  }>
+}
 
 export default function Statistics() {
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const [sessions, setSessions] = useState<SessionLog[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Composants placeholder pour les autres tabs
-  const HiitStatistics = () => (
-    <div className="text-center py-12">
-      <Activity className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-      <h3 className="text-lg font-medium mb-2">Statistiques HIIT</h3>
-      <p className="text-muted-foreground">À venir dans la prochaine version...</p>
-    </div>
-  )
+  useEffect(() => {
+    if (profile) loadSessions()
+  }, [profile])
 
-  const OverviewStatistics = () => (
-    <div className="text-center py-12">
-      <TrendingUp className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-      <h3 className="text-lg font-medium mb-2">Vue d'ensemble</h3>
-      <p className="text-muted-foreground">Statistiques globales à venir...</p>
-    </div>
-  )
+  const loadSessions = async () => {
+    if (!profile) return
+    try {
+      const { data: sessionsData } = await supabase
+        .from('workout_sessions')
+        .select('id, quest_id, started_at, total_time_seconds, note, quests(title)')
+        .eq('user_id', profile.id)
+        .eq('is_completed', true)
+        .order('started_at', { ascending: false })
+        .limit(50)
+
+      if (!sessionsData?.length) { setLoading(false); return }
+
+      const sessionIds = sessionsData.map(s => s.id)
+      const { data: logsData } = await supabase
+        .from('exercise_logs')
+        .select('session_id, exercise_id, set_number, reps_completed, weight_used, quest_exercises(name)')
+        .in('session_id', sessionIds)
+        .order('exercise_id')
+        .order('set_number')
+
+      // Construire la structure complète
+      const result: SessionLog[] = sessionsData.map(s => {
+        const sessionLogs = (logsData || []).filter(l => l.session_id === s.id)
+
+        // Grouper par exercice
+        const grouped = new Map<string, typeof sessionLogs>()
+        for (const log of sessionLogs) {
+          if (!grouped.has(log.exercise_id)) grouped.set(log.exercise_id, [])
+          grouped.get(log.exercise_id)!.push(log)
+        }
+
+        const exercises = Array.from(grouped.entries()).map(([exerciseId, sets]) => {
+          const name = (sets[0].quest_exercises as any)?.name || 'Exercice'
+          const setsData = sets.map(s => ({
+            set_number: s.set_number,
+            reps: s.reps_completed,
+            weight: Number(s.weight_used) || 0,
+          }))
+          return {
+            exercise_id: exerciseId,
+            exercise_name: name,
+            sets: setsData,
+            best_weight: Math.max(...setsData.map(s => s.weight)),
+            total_reps: setsData.reduce((sum, s) => sum + s.reps, 0),
+            volume: setsData.reduce((sum, s) => sum + s.reps * s.weight, 0),
+          }
+        })
+
+        return {
+          id: s.id,
+          quest_id: s.quest_id,
+          quest_title: (s.quests as any)?.title || 'Séance',
+          started_at: s.started_at,
+          total_time_seconds: s.total_time_seconds || 0,
+          note: (s as any).note || null,
+          exercise_logs: exercises,
+        }
+      })
+
+      setSessions(result)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    return `${mins} min`
+  }
+
+  const formatVolume = (kg: number) => {
+    if (kg >= 1000) return `${(kg / 1000).toFixed(1)}t`
+    return `${Math.round(kg)} kg`
+  }
+
+  const totalVolume = sessions.reduce((sum, s) =>
+    sum + s.exercise_logs.reduce((sv, e) => sv + e.volume, 0), 0)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/campaign')}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">📊 Mes Statistiques</h1>
-            <p className="text-muted-foreground">Suivez votre progression et vos performances</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-5">
 
-        {/* Tabs principales */}
-        <Tabs defaultValue="strength" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="strength" className="flex items-center gap-2">
-              <Dumbbell className="w-4 h-4" />
-              Musculation
-            </TabsTrigger>
-            <TabsTrigger value="hiit" className="flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              HIIT & Cardio
-            </TabsTrigger>
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Vue d'ensemble
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Musculation Tab */}
-          <TabsContent value="strength" className="space-y-6">
-            <StrengthStatistics />
-          </TabsContent>
-
-          {/* HIIT Tab */}
-          <TabsContent value="hiit" className="space-y-6">
-            <HiitStatistics />
-          </TabsContent>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <OverviewStatistics />
-          </TabsContent>
-        </Tabs>
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <h1 className="text-xl font-bold">Mes séances</h1>
       </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-xl font-bold text-accent">{sessions.length}</div>
+            <div className="text-xs text-muted-foreground">Séances</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-xl font-bold text-accent">{formatVolume(totalVolume)}</div>
+            <div className="text-xs text-muted-foreground">Volume total</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <div className="text-xl font-bold text-accent">
+              {sessions.length > 0
+                ? formatTime(Math.round(sessions.reduce((s, se) => s + se.total_time_seconds, 0) / sessions.length))
+                : '—'}
+            </div>
+            <div className="text-xs text-muted-foreground">Durée moy.</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Historique */}
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">Chargement...</div>
+      ) : sessions.length === 0 ? (
+        <div className="text-center py-12">
+          <Dumbbell className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-muted-foreground text-sm">Aucune séance enregistrée</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map(session => {
+            const sessionVolume = session.exercise_logs.reduce((s, e) => s + e.volume, 0)
+
+            return (
+              <Card
+                key={session.id}
+                className="overflow-hidden cursor-pointer hover:border-accent/40 transition-colors"
+                onClick={() => navigate(`/statistics/session/${session.id}`)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{session.quest_title}</div>
+                      <div className="text-xs text-muted-foreground capitalize mt-0.5">
+                        {formatDate(session.started_at)}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                  </div>
+
+                  <div className="flex gap-3 mt-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatTime(session.total_time_seconds)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Trophy className="w-3 h-3" />
+                      {session.exercise_logs.length} exercices
+                    </span>
+                    {sessionVolume > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Dumbbell className="w-3 h-3" />
+                        {formatVolume(sessionVolume)}
+                      </span>
+                    )}
+                    {session.note && (
+                      <span className="flex items-center gap-1 text-accent">
+                        <FileText className="w-3 h-3" />
+                        Note
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

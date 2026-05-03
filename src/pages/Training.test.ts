@@ -110,7 +110,7 @@ describe('Training - Quest Validation System', () => {
       
       // Act - Simulation de la création des données
       const questCompletion: QuestCompletionData = {
-        user_id: profile.user_id,
+        user_id: profile.id,
         quest_id: quest.id,
         status: 'completed',
         completed_at: new Date().toISOString()
@@ -150,14 +150,14 @@ describe('Training - Quest Validation System', () => {
       
       // Act
       const nextQuestUnlock = {
-        user_id: profile.user_id,
+        user_id: profile.id,
         quest_id: nextQuestId,
         status: 'todo' as const
       }
 
       // Assert - Validation de la structure
       expect(nextQuestUnlock.status).toBe('todo')
-      expect(nextQuestUnlock.user_id).toBe(profile.user_id)
+      expect(nextQuestUnlock.user_id).toBe(profile.id)
       expect(nextQuestUnlock.quest_id).toBe(nextQuestId)
       
       // Protection contre les régressions de type
@@ -237,7 +237,7 @@ describe('Training - Quest Validation System', () => {
       })
 
       const auditXP = {
-        user_id: profile.user_id,
+        user_id: profile.id,
         quest_id: quest.id,
         delta_force: quest.xp_force,
         delta_endurance: quest.xp_endurance,
@@ -248,7 +248,7 @@ describe('Training - Quest Validation System', () => {
 
       // Assert - Validation d'intégrité des données
       expect(auditXP.delta_total).toBe(50) // Basé sur les données factory
-      expect(auditXP.user_id).toBe(profile.user_id)
+      expect(auditXP.user_id).toBe(profile.id)
       expect(auditXP.quest_id).toBe(quest.id)
       
       // Protection contre la corruption des données XP
