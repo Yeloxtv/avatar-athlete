@@ -243,7 +243,7 @@ export default function Training() {
         <div className="text-center space-y-4">
           <div className="text-6xl">❌</div>
           <p className="text-muted-foreground">Quête introuvable</p>
-          <Button onClick={() => navigate('/campaign')}>Retour aux quêtes</Button>
+          <Button onClick={() => navigate('/')}>Retour aux quêtes</Button>
         </div>
       </div>
     )
@@ -257,7 +257,7 @@ export default function Training() {
           
           <WorkoutHeader 
             quest={quest} 
-            onBack={() => navigate('/campaign')} 
+            onBack={() => navigate('/')} 
             showLevelDisplay={false}
           />
 
@@ -294,7 +294,7 @@ export default function Training() {
         
         <WorkoutHeader 
           quest={quest} 
-          onBack={() => navigate('/campaign')} 
+          onBack={() => navigate('/')} 
           showLevelDisplay={true}
         />
 

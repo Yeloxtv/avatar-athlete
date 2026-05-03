@@ -224,14 +224,14 @@ export default function StrengthWorkoutInterface({
           .maybeSingle()
 
         if (campaign?.slug) {
-          window.location.href = `/campaign/${campaign.slug}`
+          window.location.href = '/'
           return
         }
       }
-      window.location.href = '/campaign'
+      window.location.href = '/'
     } catch (error) {
       console.error('Erreur lors de la redirection:', error)
-      window.location.href = '/campaign'
+      window.location.href = '/'
     }
   }
 

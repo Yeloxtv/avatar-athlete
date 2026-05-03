@@ -4,7 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import TabBar from "@/components/layout/TabBar";
-import Index from "./pages/Index";
 import Campaign from "./pages/Campaign";
 import Training from "./pages/Training";
 import Dashboard from "./pages/Dashboard";
@@ -15,14 +14,32 @@ import NotFound from "./pages/NotFound";
 import Statistics from "./pages/Statistics";
 import SessionSummary from "@/pages/SessionSummary";
 import SessionDetail from "@/pages/SessionDetail";
+import Auth from "./pages/Auth";
+import { useAuth } from "@/hooks/useAuth";
 
 const queryClient = new QueryClient();
 
-// Pages où la TabBar ne doit pas apparaître
-const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//];
+const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//, /^\/auth/];
 
-function AppLayout() {
+function ProtectedLayout() {
+  const { user, loading } = useAuth();
   const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-6xl animate-spin">⚙️</div>
+          <p className="text-muted-foreground">Chargement de ton aventure...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Auth />;
+  }
+
   const showTabBar = !HIDDEN_TABBAR_PATTERNS.some(p => p.test(location.pathname));
 
   return (
@@ -54,7 +71,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppLayout />
+        <ProtectedLayout />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
