@@ -1,19 +1,19 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/lib/supabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { RewardResult } from '@/types/rpg'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
-import WorkoutTimer from '@/components/workout/shared/WorkoutTimer'
+import { List, Square, CheckSquare, Flame, Clock, X, RefreshCw, Search } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
 
 interface SessionSummary {
   rounds: number
@@ -32,6 +32,389 @@ interface StrengthWorkoutInterfaceProps {
   onFinishWorkout: () => void
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatRestTimer(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (mins > 0) {
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+  return `0:${secs.toString().padStart(2, '0')}`
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────
+
+interface SeriesDotsProps {
+  total: number
+  current: number
+  completedLogs: number
+}
+
+function SeriesDots({ total, current, completedLogs }: SeriesDotsProps) {
+  return (
+    <div className="flex items-center gap-2 justify-center">
+      {Array.from({ length: total }, (_, i) => {
+        const setNumber = i + 1
+        const isDone = setNumber <= completedLogs
+        const isActive = setNumber === current && !isDone
+
+        return (
+          <div
+            key={i}
+            className={cn(
+              'w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all',
+              isDone && 'bg-accent border-accent text-accent-foreground',
+              isActive && 'border-accent ring-2 ring-accent animate-pulse text-accent',
+              !isDone && !isActive && 'border-muted text-muted-foreground'
+            )}
+          >
+            {isDone ? '✓' : setNumber}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+interface RestPhaseProps {
+  restTimer: number
+  exerciseRestTime: number
+  nextLabel: string
+  onSkip: () => void
+  onAdjust: (delta: number) => void
+}
+
+function RestPhase({ restTimer, exerciseRestTime, nextLabel, onSkip, onAdjust }: RestPhaseProps) {
+  const progressValue = exerciseRestTime > 0 ? (restTimer / exerciseRestTime) * 100 : 0
+
+  return (
+    <div className="flex flex-col items-center gap-6 py-6 px-4">
+      <div className="text-center space-y-1">
+        <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
+          Récupération
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Prochain : <span className="text-foreground font-medium">{nextLabel}</span>
+        </p>
+      </div>
+
+      <div className="relative flex items-center justify-center w-52 h-52">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 200 200">
+          <circle
+            cx="100"
+            cy="100"
+            r="88"
+            fill="none"
+            stroke="hsl(var(--muted))"
+            strokeWidth="8"
+          />
+          <circle
+            cx="100"
+            cy="100"
+            r="88"
+            fill="none"
+            stroke="hsl(var(--accent))"
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 88}`}
+            strokeDashoffset={`${2 * Math.PI * 88 * (1 - progressValue / 100)}`}
+            className="transition-all duration-1000"
+          />
+        </svg>
+        <span className="text-6xl font-mono font-bold text-accent tabular-nums">
+          {formatRestTimer(restTimer)}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-16"
+          onClick={() => onAdjust(-30)}
+        >
+          −30s
+        </Button>
+        <Button
+          onClick={onSkip}
+          className="px-6 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+        >
+          Passer
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-16"
+          onClick={() => onAdjust(30)}
+        >
+          +30s
+        </Button>
+      </div>
+
+      <Progress
+        value={progressValue}
+        className="w-full h-1.5 bg-muted"
+      />
+    </div>
+  )
+}
+
+interface SessionDrawerProps {
+  exercises: QuestExercise[]
+  currentExerciseIndex: number
+  exerciseLogs: Array<{ exercise_id: string }>
+  completedSets: number
+  onSwitchTo: (index: number) => void
+}
+
+function SessionDrawer({
+  exercises,
+  currentExerciseIndex,
+  exerciseLogs,
+  completedSets,
+  onSwitchTo
+}: SessionDrawerProps) {
+  const totalSetsPlanned = exercises.reduce((sum, ex) => sum + ((ex as any).sets_count || 3), 0)
+
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button className="w-full h-12 gap-2 text-sm font-semibold bg-yellow-400 text-yellow-900 border-0">
+          <List className="w-4 h-4" />
+          Voir la séance
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto pb-safe">
+        <SheetHeader className="mb-4">
+          <SheetTitle className="text-base">Programme de la séance</SheetTitle>
+        </SheetHeader>
+
+        <div className="space-y-2">
+          {exercises.map((exercise, index) => {
+            const targetSets = (exercise as any).sets_count || 3
+            const done = exerciseLogs.filter(l => l.exercise_id === exercise.id).length
+            const isCompleted = done >= targetSets || index < currentExerciseIndex
+            const isActive = index === currentExerciseIndex
+            const isUpcoming = !isCompleted && !isActive
+
+            return (
+              <div
+                key={`${exercise.id}-${index}`}
+                className={cn(
+                  'flex items-center justify-between gap-3 p-3 rounded-lg border transition-colors',
+                  isCompleted && 'border-green-500/30 bg-green-500/5',
+                  isActive && 'border-accent/50 bg-accent/10',
+                  isUpcoming && 'border-muted bg-muted/10'
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="shrink-0 text-base">
+                    {isCompleted
+                      ? <CheckSquare className="w-4 h-4 text-green-500" />
+                      : isActive
+                        ? <Flame className="w-4 h-4 text-accent" />
+                        : <Square className="w-4 h-4 text-muted-foreground" />
+                    }
+                  </span>
+                  <div className="min-w-0">
+                    <p className={cn(
+                      'text-sm font-medium truncate',
+                      isCompleted && 'text-green-500',
+                      isActive && 'text-accent',
+                      isUpcoming && 'text-muted-foreground'
+                    )}>
+                      {exercise.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {done}/{targetSets} séries
+                      {(exercise as any).target_reps ? ` · ${(exercise as any).target_reps} reps` : ''}
+                    </p>
+                  </div>
+                </div>
+
+                {isUpcoming && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 text-xs h-7 px-2"
+                    onClick={() => onSwitchTo(index)}
+                  >
+                    Faire maintenant
+                  </Button>
+                )}
+                {isActive && (
+                  <span className="shrink-0 text-xs text-accent font-medium">En cours</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-4 p-3 bg-muted/20 rounded-lg border border-muted/30">
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div>
+              <p className="text-lg font-bold text-accent">{completedSets}</p>
+              <p className="text-xs text-muted-foreground">Séries faites</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-foreground">{totalSetsPlanned}</p>
+              <p className="text-xs text-muted-foreground">Séries prévues</p>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// ─── Substitute Drawer ────────────────────────────────────────────────────
+
+interface GlobalExercise {
+  id: string
+  name: string
+  name_fr: string | null
+  muscle_group: string
+  equipment: string
+  level: string
+}
+
+const EQUIPMENT_FR: Record<string, string> = {
+  barbell: 'Barre', dumbbell: 'Haltères', cable: 'Poulie', machine: 'Machine',
+  bodyweight: 'Poids corps', bands: 'Élastiques', kettlebell: 'Kettlebell', other: 'Autre',
+}
+
+const EQUIPMENT_COLORS: Record<string, string> = {
+  barbell: 'bg-orange-500/20 text-orange-400',
+  dumbbell: 'bg-blue-500/20 text-blue-400',
+  cable: 'bg-purple-500/20 text-purple-400',
+  machine: 'bg-cyan-500/20 text-cyan-400',
+  bodyweight: 'bg-emerald-500/20 text-emerald-400',
+  bands: 'bg-pink-500/20 text-pink-400',
+  kettlebell: 'bg-amber-500/20 text-amber-400',
+  other: 'bg-muted/40 text-muted-foreground',
+}
+
+interface SubstituteDrawerProps {
+  currentExerciseName: string
+  muscleGroup: string | null
+  onSubstitute: (id: string, name: string, muscleGroup: string) => void
+}
+
+function SubstituteDrawer({ currentExerciseName, muscleGroup, onSubstitute }: SubstituteDrawerProps) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [exercises, setExercises] = useState<GlobalExercise[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    let query = supabase
+      .from('exercises')
+      .select('id, name, name_fr, muscle_group, equipment, level')
+      .order('name')
+    if (muscleGroup) query = (query as any).eq('muscle_group', muscleGroup)
+    ;(query as any).then(({ data }: { data: GlobalExercise[] | null }) => {
+      setExercises(data ?? [])
+      setLoading(false)
+    })
+  }, [open, muscleGroup])
+
+  const q = search.trim().toLowerCase()
+  const filtered = q.length >= 2
+    ? exercises.filter(e =>
+        e.name !== currentExerciseName &&
+        (e.name.toLowerCase().includes(q) || (e.name_fr ?? '').toLowerCase().includes(q))
+      )
+    : exercises.filter(e => e.name !== currentExerciseName)
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-muted-foreground gap-1 hover:text-foreground"
+        >
+          <RefreshCw className="w-3 h-3" />
+          Remplacer
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[85vh] flex flex-col pb-safe">
+        <SheetHeader className="mb-3 shrink-0">
+          <SheetTitle className="text-base">Remplacer l'exercice</SheetTitle>
+          <p className="text-xs text-muted-foreground">
+            Remplace <span className="font-medium text-foreground">{currentExerciseName}</span>
+            {muscleGroup ? ` · filtre : ${muscleGroup}` : ''}
+          </p>
+        </SheetHeader>
+
+        <div className="relative shrink-0 mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher..."
+            className="pl-9"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Chargement...</div>
+          ) : filtered.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Aucun résultat</div>
+          ) : (
+            filtered.map(ex => (
+              <button
+                key={ex.id}
+                className="w-full flex items-start justify-between px-3 py-3 rounded-lg hover:bg-muted/20 transition-colors text-left"
+                onClick={() => {
+                  onSubstitute(ex.id, ex.name, ex.muscle_group)
+                  setOpen(false)
+                  setSearch('')
+                }}
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium truncate">{ex.name}</p>
+                  {ex.name_fr && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{ex.name_fr}</p>
+                  )}
+                </div>
+                <div className="shrink-0 flex flex-col items-end gap-1 pt-0.5">
+                  <span className={cn(
+                    'text-xs px-2 py-0.5 rounded-full font-medium',
+                    ex.level === 'beginner' && 'bg-green-500/20 text-green-400',
+                    ex.level === 'intermediate' && 'bg-yellow-500/20 text-yellow-400',
+                    ex.level === 'expert' && 'bg-red-500/20 text-red-400',
+                  )}>
+                    {ex.level === 'beginner' ? 'Débutant' : ex.level === 'intermediate' ? 'Intermédiaire' : 'Expert'}
+                  </span>
+                  <span className={cn(
+                    'text-xs px-2 py-0.5 rounded-full font-medium',
+                    EQUIPMENT_COLORS[ex.equipment] ?? EQUIPMENT_COLORS.other
+                  )}>
+                    {EQUIPMENT_FR[ex.equipment] ?? ex.equipment}
+                  </span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// ─── Main component ────────────────────────────────────────────────────────
+
 export default function StrengthWorkoutInterface({
   quest,
   session,
@@ -42,31 +425,37 @@ export default function StrengthWorkoutInterface({
   onReset,
   onFinishWorkout
 }: StrengthWorkoutInterfaceProps) {
-  const navigate = useNavigate()
   const { profile } = useProfile()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
-  
+
   const [showSummary, setShowSummary] = useState(false)
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null)
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
+  const [showPRFlash, setShowPRFlash] = useState(false)
 
-  // Hook pour musculation — session?.id peut changer après startWorkout, le hook se réinit via useEffect interne
   const strengthWorkout = useStrengthWorkout({
     exercises: quest?.exercises || [],
     sessionId: session?.id ?? '',
     restTimeSeconds: 60
   })
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
+
+  // Flash PR — 3s puis disparaît
+  useEffect(() => {
+    if (strengthWorkout.lastPR) {
+      setShowPRFlash(true)
+      const t = setTimeout(() => {
+        setShowPRFlash(false)
+        strengthWorkout.clearPR()
+      }, 3000)
+      return () => clearTimeout(t)
+    }
+  }, [strengthWorkout.lastPR])
 
   const finishWorkout = () => {
     setSessionSummary({
-      rounds: 0, // Pour musculation, pas de rounds
+      rounds: 0,
       totalTime: time,
       questTitle: quest?.title,
     })
@@ -75,32 +464,22 @@ export default function StrengthWorkoutInterface({
 
   const validateWorkout = async () => {
     if (!quest || !profile || !session || isProcessingRewards) return
-    
+
     try {
-      console.log('🔄 Début de la validation de l\'entraînement musculation...')
-      
-      // Fermer la première modal immédiatement
       setShowSummary(false)
 
-      // 1. Marquer la session comme terminée
-      console.log('📝 Mise à jour de la session workout...')
       const { error: sessionError } = await supabase
         .from('workout_sessions')
         .update({
           is_completed: true,
           ended_at: new Date().toISOString(),
           total_time_seconds: time,
-          rounds_completed: 0, // Musculation n'a pas de rounds
+          rounds_completed: 0,
         })
         .eq('id', session.id)
 
-      if (sessionError) {
-        console.error('❌ Erreur session:', sessionError)
-        throw sessionError
-      }
+      if (sessionError) throw sessionError
 
-      // 2. Marquer la quête comme terminée avec UPSERT
-      console.log('✅ Mise à jour du statut de la quête...')
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
@@ -112,35 +491,26 @@ export default function StrengthWorkoutInterface({
           onConflict: 'user_id,quest_id'
         })
 
-      if (questStatusError) {
-        console.error('❌ ERREUR lors de la sauvegarde:', questStatusError)
-        throw questStatusError
-      } else {
-        console.log('✅ Statut sauvegardé avec succès')
-      }
+      if (questStatusError) throw questStatusError
 
-      // 3. Calculer les récompenses
-      console.log('🎁 Calcul des récompenses...')
       let rewards = null
       try {
         rewards = await processWorkoutRewards({
           durationMin: Math.ceil(time / 60),
           workoutType: quest.workout_type,
-          intensity: 'MEDIUM', // Pour musculation, intensité moyenne par défaut
+          intensity: 'MEDIUM',
         })
 
         if (rewards) {
           setRewardResults(rewards)
           setTimeout(() => setShowRewardsModal(true), 500)
         }
-      } catch (rewardError) {
-        console.warn('⚠️ Erreur lors du calcul des récompenses (non bloquant):', rewardError)
+      } catch {
+        // erreur non bloquante
       }
 
-      // 4. Enregistrer l'audit XP
-      console.log('📊 Enregistrement de l\'audit XP...')
       try {
-        const { error: auditError } = await supabase.from('audit_xp').insert({
+        await supabase.from('audit_xp').insert({
           user_id: profile.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
@@ -149,31 +519,19 @@ export default function StrengthWorkoutInterface({
           delta_mental: quest.xp_mental,
           delta_total: quest.xp_force + quest.xp_endurance + quest.xp_agilite + quest.xp_mental,
         })
-
-        if (auditError) {
-          console.warn('⚠️ Erreur audit XP (non bloquant):', auditError)
-        }
-      } catch (auditError) {
-        console.warn('⚠️ Erreur audit XP (non bloquant):', auditError)
+      } catch {
+        // erreur non bloquante
       }
 
-      // 5. Débloquer la quête suivante
-      console.log('🔍 Recherche de la quête suivante...')
-      const { data: nextQuest, error: nextQuestError } = await supabase
+      const { data: nextQuest } = await supabase
         .from('quests')
         .select('id, title')
         .eq('campaign_id', quest.campaign_id)
         .eq('order_index', quest.order_index + 1)
         .maybeSingle()
 
-      if (nextQuestError) {
-        console.warn('⚠️ Erreur recherche quête suivante:', nextQuestError)
-      }
-
       if (nextQuest) {
-        console.log('🔓 Déblocage de la quête suivante:', nextQuest.title)
-        
-        const { error: nextQuestUnlockError } = await supabase
+        await supabase
           .from('user_quests')
           .upsert({
             user_id: profile.id,
@@ -182,27 +540,19 @@ export default function StrengthWorkoutInterface({
           }, {
             onConflict: 'user_id,quest_id'
           })
-
-        if (nextQuestUnlockError) {
-          console.error('❌ Erreur déblocage quête suivante:', nextQuestUnlockError)
-        } else {
-          console.log('✅ Quête suivante débloquée avec succès')
-        }
       }
 
-      console.log('🎉 Validation terminée avec succès !')
       toast({
-        title: "✅ Validation réussie",
+        title: "Validation réussie",
         description: "Votre entraînement a été enregistré !",
       })
 
-      // Si pas de récompenses à afficher, ouvrir directement la modal des récompenses
       if (!rewards) {
         setTimeout(() => setShowRewardsModal(true), 500)
       }
 
     } catch (error) {
-      console.error('❌ Erreur critique lors de la validation:', error)
+      console.error('Erreur lors de la validation:', error)
       toast({
         title: 'Erreur de validation',
         description: "Impossible de valider l'entraînement. Veuillez réessayer.",
@@ -235,284 +585,205 @@ export default function StrengthWorkoutInterface({
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <WorkoutTimer
-        time={time}
-        isRunning={isRunning}
-        onStart={onStart}
-        onPause={onPause}
-        onReset={onReset}
-        onFinishWorkout={onFinishWorkout}
-        onAddRound={() => {}}
-        isStrengthWorkout={true}
-      />
+  // ── Computed ──────────────────────────────────────────────────────────────
 
-      {/* Progression globale */}
-      <Card className="border-accent/30">
-        <CardContent className="p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium">Progression</span>
-            <span className="text-sm text-muted-foreground">
-              {strengthWorkout.state.currentExerciseIndex + 1}/{quest.exercises.length} exercices
+  const { state, currentExercise, exercises, isWorkoutComplete, totalSets, exerciseRestTime } = strengthWorkout
+  const sessionReady = !!session?.id
+
+  const exerciseNumber = state.currentExerciseIndex + 1
+  const exerciseTotal = exercises.length
+
+  const nextLabel = (() => {
+    if (state.currentSet < totalSets) {
+      return `Série ${state.currentSet + 1}/${totalSets} — ${currentExercise?.name ?? ''}`
+    }
+    const nextEx = exercises[state.currentExerciseIndex + 1]
+    return nextEx ? nextEx.name : 'Dernière série'
+  })()
+
+  const previousPerf = strengthWorkout.getCurrentExercisePreviousPerformance()
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-col min-h-0 bg-background">
+
+      {/* PR Flash — position fixe en haut */}
+      {showPRFlash && strengthWorkout.lastPR && (
+        <div className="fixed inset-x-0 top-0 z-50 flex justify-center pt-4 pointer-events-none px-4">
+          <div className="bg-yellow-400 text-yellow-900 font-bold text-base px-5 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
+            <span>NOUVEAU RECORD !</span>
+            <span>
+              {strengthWorkout.lastPR.weight > 0
+                ? `${strengthWorkout.lastPR.weight}kg × `
+                : ''}
+              {strengthWorkout.lastPR.reps} reps
             </span>
           </div>
-          <Progress value={strengthWorkout.progressPercentage} className="h-2" />
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
-      {/* Exercice en cours - OPTIMISÉ MOBILE */}
-      {strengthWorkout.currentExercise && !strengthWorkout.isWorkoutComplete && (
-        <Card className="border-green-200 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex justify-between items-center text-base">
-              <span className="truncate">{strengthWorkout.currentExercise.name}</span>
-              <Badge variant="outline" className="bg-green-50 text-xs">
-                {strengthWorkout.state.currentSet}/{strengthWorkout.totalSets}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            
-            {/* Infos de l'exercice - GRID 2x2 MOBILE */}
-            <div className="grid grid-cols-2 gap-3 p-3 bg-muted/30 rounded-lg">
-              <div className="text-center">
-                <div className="text-lg font-bold text-blue-600">
-                  {strengthWorkout.currentExercise.target_reps}
-                </div>
-                <div className="text-xs text-muted-foreground">Reps cible</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-purple-600">
-                  {strengthWorkout.totalSets}
-                </div>
-                <div className="text-xs text-muted-foreground">Séries</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-green-600">
-                  {strengthWorkout.currentExercise.target_weight ? 
-                    `${strengthWorkout.currentExercise.target_weight}kg` : 
-                    'Libre'
-                  }
-                </div>
-                <div className="text-xs text-muted-foreground">Charge</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-bold text-orange-600">
-                  {(() => {
-                    const prevPerf = strengthWorkout.getCurrentExercisePreviousPerformance()
-                    if (!prevPerf) return 'Nouveau'
-                    return `${prevPerf.reps_completed} à ${prevPerf.weight_used || 'PDC'}kg`
-                  })()}
-                </div>
-                <div className="text-xs text-muted-foreground">Meilleure série</div>
-              </div>
-            </div>
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-muted/30">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Clock className="w-3.5 h-3.5" />
+          <span className="text-sm font-mono tabular-nums">{formatTime(time)}</span>
+        </div>
 
-            {/* Timer de repos */}
-            {strengthWorkout.state.isResting ? (
-              <Card className="border-blue-200/50 bg-muted/40">
-                <CardContent className="p-4 text-center">
-                  <div className="text-3xl font-mono font-bold text-blue-600 mb-2">
-                    {strengthWorkout.state.restTimer}s
-                  </div>
-                  <div className="text-sm text-blue-600/80 mb-3">Temps de repos</div>
-                  <Progress 
-                    value={strengthWorkout.exerciseRestTime > 0 ? (strengthWorkout.state.restTimer / strengthWorkout.exerciseRestTime) * 100 : 0} 
-                    className="mb-3 bg-muted/60"
-                  />
-                  <Button 
-                    onClick={strengthWorkout.skipRest} 
-                    variant="outline"
-                    size="sm"
-                    className="border-blue-300/50 hover:bg-blue-50/50"
-                  >
-                    Passer le repos
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              // Saisie des performances - TAILLE RÉDUITE
-              <div className="space-y-3">
-                <StrengthPerformanceInput 
-                  exercise={strengthWorkout.currentExercise}
-                  onComplete={strengthWorkout.completeSet}
-                  disabled={!strengthWorkout.canCompleteSet}
+        <div className="flex items-center gap-2">
+          {!isWorkoutComplete && (
+            <span className="text-xs text-muted-foreground font-medium">
+              Exercice {exerciseNumber}/{exerciseTotal}
+            </span>
+          )}
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2"
+          onClick={finishWorkout}
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* ── Corps principal ────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+
+        {/* Phase repos */}
+        {state.isResting && currentExercise && !isWorkoutComplete && (
+          <RestPhase
+            restTimer={state.restTimer}
+            exerciseRestTime={exerciseRestTime}
+            nextLabel={nextLabel}
+            onSkip={strengthWorkout.skipRest}
+            onAdjust={strengthWorkout.adjustRest}
+          />
+        )}
+
+        {/* Phase exercice actif */}
+        {!state.isResting && currentExercise && !isWorkoutComplete && (
+          <div className="px-4 py-5 space-y-5">
+
+            {/* Nom de l'exercice */}
+            <div className="text-center space-y-1">
+              <h2 className="text-2xl font-bold tracking-tight leading-tight">
+                {currentExercise.name}
+              </h2>
+              <div className="flex justify-center">
+                <SubstituteDrawer
+                  currentExerciseName={currentExercise.name}
+                  muscleGroup={(currentExercise as any).muscle_group ?? null}
+                  onSubstitute={strengthWorkout.substituteExercise}
                 />
               </div>
-            )}
-
-            {/* Historique des séries - COMPACT */}
-            {strengthWorkout.currentExerciseLogs.length > 0 && (
-              <Card className="border-muted">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Séries précédentes</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  {strengthWorkout.currentExerciseLogs.map((log, index) => (
-                    <div key={index} className="flex justify-between text-sm py-1">
-                      <span className="text-muted-foreground">Série {log.set_number}</span>
-                      <span className="font-medium">
-                        {log.reps_completed} @ {log.weight_used || 'PDC'}kg
-                      </span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Liste de tous les exercices avec progression */}
-      <Card className="border-accent/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <span>📋</span>
-            Exercices de la séance
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {quest.exercises.map((exercise, index) => {
-            // Calculer le statut de l'exercice
-            const isCurrentExercise = index === strengthWorkout.state.currentExerciseIndex
-            const exerciseLogs = strengthWorkout.state.exerciseLogs.filter(log => log.exercise_id === exercise.id)
-            const targetSets = exercise.sets_count || 3
-            const completedSets = exerciseLogs.length
-            const isCompleted = completedSets >= targetSets
-            const isPrevious = index < strengthWorkout.state.currentExerciseIndex
-            
-            // Définir les styles selon le statut
-            let cardClasses = "p-3 rounded-lg border transition-all duration-300"
-            let statusIcon = ""
-            let statusText = ""
-            
-            if (isCompleted || isPrevious) {
-              cardClasses += " border-green-400/60 bg-muted/70 shadow-md ring-1 ring-green-400/30"
-              statusIcon = "✅"
-              statusText = `${completedSets}/${targetSets} séries - Terminé`
-            } else if (isCurrentExercise) {
-              cardClasses += " border-yellow-400 bg-muted/40 shadow-lg ring-2 ring-yellow-300/50"
-              statusIcon = "🔥"
-              statusText = `${completedSets}/${targetSets} séries - En cours`
-            } else {
-              cardClasses += " border-muted bg-muted/20"
-              statusIcon = "⏳"
-              statusText = `0/${targetSets} séries - À venir`
-            }
-
-            return (
-              <div key={exercise.id} className={cardClasses}>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-base">{statusIcon}</span>
-                      <h4 className={`font-medium text-sm ${isCurrentExercise ? 'text-yellow-600' : isCompleted ? 'text-green-600' : 'text-muted-foreground'}`}>
-                        {exercise.name}
-                      </h4>
-                    </div>
-                    
-                    {/* Infos de l'exercice - COMPACT */}
-                    <div className="grid grid-cols-3 gap-2 text-xs mb-3">
-                      <div>
-                        <span className="text-muted-foreground">Reps: </span>
-                        <span className="font-medium">{exercise.target_reps}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Poids: </span>
-                        <span className="font-medium">
-                          {exercise.target_weight ? `${exercise.target_weight}kg` : 'Libre'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Repos: </span>
-                        <span className="font-medium">{exercise.rest_seconds || 60}s</span>
-                      </div>
-                    </div>
-                    
-                    {/* Progression des séries */}
-                    <div className="mb-3">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-muted-foreground">Progression</span>
-                        <span className="text-xs font-medium">{statusText}</span>
-                      </div>
-                      <Progress 
-                        value={(completedSets / targetSets) * 100} 
-                        className={`h-2 ${isCompleted ? '[&>div]:bg-green-400' : isCurrentExercise ? '[&>div]:bg-yellow-400' : ''}`}
-                      />
-                    </div>
-
-                    {/* Détail des séries réalisées - COMPACT */}
-                    {exerciseLogs.length > 0 && (
-                      <div className="p-2 bg-muted/60 rounded border border-muted/40">
-                        <div className="text-xs text-muted-foreground mb-1">Séries réalisées :</div>
-                        <div className="flex flex-wrap gap-1">
-                          {exerciseLogs.map((log, logIndex) => (
-                            <span 
-                              key={logIndex}
-                              className="text-xs px-2 py-0.5 rounded font-medium bg-purple-600 text-white"
-                            >
-                              {log.reps_completed}@{log.weight_used || 'PDC'}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-          
-          {/* Statistiques globales - COMPACT */}
-          <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
-            <div className="grid grid-cols-2 gap-4 text-sm text-center">
-              <div>
-                <div className="text-lg font-bold text-accent">
-                  {strengthWorkout.state.completedSets}
-                </div>
-                <div className="text-xs text-muted-foreground">Séries faites</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold text-accent">
-                  {quest.exercises.reduce((total, ex) => total + (ex.sets_count || 3), 0)}
-                </div>
-                <div className="text-xs text-muted-foreground">Séries prévues</div>
-              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Fin d'entraînement */}
-      {strengthWorkout.isWorkoutComplete && (
-        <Card className="border-green-200 bg-green-50">
-          <CardContent className="p-6 text-center">
-            <h2 className="text-xl font-bold text-green-600 mb-4">🎉 Entraînement terminé !</h2>
-            <Button 
+            {/* Chips de données */}
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <Chip label="Reps" value={String((currentExercise as any).target_reps ?? '—')} />
+              <Chip
+                label="Série"
+                value={`${state.currentSet}/${totalSets}`}
+                accent
+              />
+              <Chip
+                label="Charge"
+                value={(currentExercise as any).target_weight
+                  ? `${(currentExercise as any).target_weight}kg`
+                  : 'Libre'
+                }
+              />
+              <Chip
+                label="Repos"
+                value={`${exerciseRestTime}s`}
+              />
+            </div>
+
+            {/* Indicateurs de séries */}
+            <SeriesDots
+              total={totalSets}
+              current={state.currentSet}
+              completedLogs={strengthWorkout.currentExerciseLogs.length}
+            />
+
+            {/* Séparateur */}
+            <div className="border-t border-muted/20" />
+
+            {/* Saisie performances */}
+            {!sessionReady ? (
+              <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground text-sm">
+                <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                Préparation de la séance...
+              </div>
+            ) : (
+              <StrengthPerformanceInput
+                exercise={currentExercise as any}
+                previousPerf={previousPerf}
+                onComplete={strengthWorkout.completeSet}
+                disabled={!strengthWorkout.canCompleteSet}
+              />
+            )}
+
+            {/* Bouton voir la séance */}
+            <SessionDrawer
+              exercises={exercises}
+              currentExerciseIndex={state.currentExerciseIndex}
+              exerciseLogs={state.exerciseLogs}
+              completedSets={state.completedSets}
+              onSwitchTo={strengthWorkout.switchToExercise}
+            />
+          </div>
+        )}
+
+        {/* Fin d'entraînement */}
+        {isWorkoutComplete && (
+          <div className="flex flex-col items-center justify-center px-6 py-16 gap-6 text-center">
+            <div className="text-5xl">🏆</div>
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold">Entraînement terminé !</h2>
+              <p className="text-muted-foreground text-sm">
+                {state.completedSets} séries réalisées en {formatTime(time)}
+              </p>
+            </div>
+            <Button
               onClick={finishWorkout}
-              className="bg-green-600 hover:bg-green-700"
+              className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700 w-full max-w-xs"
             >
-              Valider la séance
+              Terminer la séance
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ── Barre de progression globale ───────────────────────────────────── */}
+      {!isWorkoutComplete && (
+        <div className="px-4 pb-4 pt-2 border-t border-muted/20">
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs text-muted-foreground">Progression</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {state.completedSets} / {exercises.reduce((s, ex) => s + ((ex as any).sets_count || 3), 0)} séries
+            </span>
+          </div>
+          <Progress value={strengthWorkout.progressPercentage} className="h-1.5" />
+        </div>
       )}
 
-      {/* Session Summary Dialog */}
+      {/* ── Dialog résumé séance ────────────────────────────────────────────── */}
       <Dialog open={showSummary} onOpenChange={setShowSummary}>
         <DialogContent className="max-w-md mx-4 rpg-card">
           <DialogHeader>
-            <DialogTitle className="text-center">🎉 Séance terminée !</DialogTitle>
+            <DialogTitle className="text-center">Séance terminée !</DialogTitle>
             <DialogDescription className="text-center">
-              Séance de musculation complétée !
+              Séance de musculation complétée
             </DialogDescription>
           </DialogHeader>
 
           {sessionSummary && (
             <div className="space-y-4">
               <div className="text-center space-y-2">
-                <div className="text-2xl font-bold text-accent">
+                <div className="text-2xl font-bold text-accent font-mono">
                   {formatTime(sessionSummary.totalTime)}
                 </div>
                 <div className="text-sm text-muted-foreground">
@@ -526,7 +797,7 @@ export default function StrengthWorkoutInterface({
                   className="w-full bg-accent hover:bg-accent/90"
                   disabled={isProcessingRewards}
                 >
-                  {isProcessingRewards ? '⏳ Traitement...' : '🚀 Valider la séance'}
+                  {isProcessingRewards ? 'Traitement...' : 'Valider la séance'}
                 </Button>
                 <Button
                   onClick={() => setShowSummary(false)}
@@ -542,40 +813,58 @@ export default function StrengthWorkoutInterface({
         </DialogContent>
       </Dialog>
 
-      {/* Rewards Modal */}
+      {/* ── Dialog récompenses ──────────────────────────────────────────────── */}
       <Dialog open={showRewardsModal} onOpenChange={handleRewardsModalClose}>
         <DialogContent className="max-w-md mx-4 rpg-card">
           <DialogHeader>
-            <DialogTitle className="text-center">🎉 Récompenses !</DialogTitle>
+            <DialogTitle className="text-center">Récompenses !</DialogTitle>
           </DialogHeader>
-          
+
           {rewardResults && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="p-3 bg-yellow-50 rounded border border-yellow-200">
-                  <div className="text-2xl font-bold text-yellow-600">
-                    +{rewardResults.xpGained}
+                <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                  <div className="text-2xl font-bold text-yellow-500">
+                    +{rewardResults.gainedXpGlobal}
                   </div>
-                  <div className="text-xs text-yellow-700">XP gagné</div>
+                  <div className="text-xs text-muted-foreground">XP gagné</div>
                 </div>
-                <div className="p-3 bg-green-50 rounded border border-green-200">
-                  <div className="text-2xl font-bold text-green-600">
-                    +{rewardResults.coinsGained}
+                {rewardResults.gainedStats && (
+                  <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
+                    <div className="text-2xl font-bold text-accent">
+                      +{Object.values(rewardResults.gainedStats).reduce((a, b) => (a ?? 0) + (b ?? 0), 0)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Stats gagnées</div>
                   </div>
-                  <div className="text-xs text-green-700">Pièces</div>
-                </div>
+                )}
               </div>
 
               <Button
                 onClick={handleRewardsModalClose}
                 className="w-full bg-accent hover:bg-accent/90"
               >
-                🏠 Retourner à la campagne
+                Retourner à la campagne
               </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ─── Chip helper ────────────────────────────────────────────────────────────
+
+function Chip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className={cn(
+      'flex flex-col items-center px-3 py-1.5 rounded-lg border text-center min-w-[64px]',
+      accent
+        ? 'bg-accent/10 border-accent/40 text-accent'
+        : 'bg-muted/20 border-muted/40 text-foreground'
+    )}>
+      <span className="text-base font-bold leading-tight">{value}</span>
+      <span className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">{label}</span>
     </div>
   )
 }

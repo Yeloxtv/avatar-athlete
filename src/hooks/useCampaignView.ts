@@ -8,6 +8,7 @@ interface Campaign {
   slug: string;
   title: string;
   description: string;
+  owner_user_id: string | null;
 }
 
 interface Quest {
@@ -34,7 +35,7 @@ export const useCampaignView = () => {
   };
 
   const navigateBack = () => {
-    navigate("/profil");
+    navigate("/");
   };
 
   const resetCampaign = async () => {
@@ -140,9 +141,6 @@ export const useCampaignView = () => {
           .eq("user_id", user.id)
           .in("quest_id", questIds);
 
-        // 🔍 LOG UTILE : Vérifier les statuts récupérés
-        console.log("🔍 QUEST DEBUG - Statuts récupérés de la DB:", userQuests);
-
         if (!userQuestsError && userQuests?.length) {
           statusByQuestId = new Map(
             userQuests.map((r: { quest_id: string; status: string }) => [
@@ -153,14 +151,19 @@ export const useCampaignView = () => {
         }
       }
 
+      const isPersonalProgram = campaignData.owner_user_id === user?.id
+
       // Calculer les statuts finaux avec logique de déblocage
       const questsWithStatus = (questsData || []).map((quest, index) => {
         const dbStatus = statusByQuestId.get(quest.id);
 
-        let user_status = "locked";
+        let user_status: string
 
         if (dbStatus === "completed") {
           user_status = "completed";
+        } else if (isPersonalProgram) {
+          // Programme perso : tout est accessible librement
+          user_status = "available";
         } else if (dbStatus === "available") {
           user_status = "available";
         } else if (index === 0) {
@@ -168,19 +171,8 @@ export const useCampaignView = () => {
         } else {
           const previousQuest = questsData[index - 1];
           const previousStatus = statusByQuestId.get(previousQuest?.id);
-
-          if (previousStatus === "completed") {
-            user_status = "available";
-          }
+          user_status = previousStatus === "completed" ? "available" : "locked";
         }
-
-        // 🔍 LOG UTILE : Vérifier la logique de chaque quête
-        console.log(`🎯 QUEST DEBUG - ${quest.title}:`, {
-          order_index: quest.order_index,
-          dbStatus,
-          user_status,
-          previousCompleted: index > 0 ? statusByQuestId.get(questsData[index - 1]?.id) : 'N/A'
-        });
 
         return {
           ...quest,

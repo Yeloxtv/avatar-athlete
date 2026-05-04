@@ -28,6 +28,7 @@ interface SessionSummary {
     mental: number
     total: number
   }
+  prs: Array<{ exercise_name: string; weight: number; reps: number }>
 }
 
 interface UseSessionSummaryProps {
@@ -69,12 +70,33 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
       let exercises: ExercisePerformance[] = []
       let totalVolume = 0
 
+      const prs: SessionSummary['prs'] = []
+
       if (logs && logs.length > 0) {
         // Grouper les logs par exercice
         const grouped = new Map<string, typeof logs>()
         for (const log of logs) {
           if (!grouped.has(log.exercise_id)) grouped.set(log.exercise_id, [])
           grouped.get(log.exercise_id)!.push(log)
+        }
+
+        // Charger les meilleures perfs précédentes pour chaque exercice
+        const exerciseIds = Array.from(grouped.keys())
+        const { data: prevLogs } = await supabase
+          .from('exercise_logs')
+          .select('exercise_id, reps_completed, weight_used')
+          .in('exercise_id', exerciseIds)
+          .neq('session_id', session.id)
+          .order('weight_used', { ascending: false })
+
+        // Meilleur poids précédent par exercice
+        const prevBest = new Map<string, { weight: number; reps: number }>()
+        for (const log of prevLogs || []) {
+          const w = Number(log.weight_used) || 0
+          const existing = prevBest.get(log.exercise_id)
+          if (!existing || w > existing.weight || (w === existing.weight && log.reps_completed > existing.reps)) {
+            prevBest.set(log.exercise_id, { weight: w, reps: log.reps_completed })
+          }
         }
 
         exercises = Array.from(grouped.entries()).map(([exerciseId, sets]) => {
@@ -85,9 +107,21 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
             weight: Number(s.weight_used) || 0,
           }))
           const best_weight = Math.max(...setsData.map(s => s.weight))
+          const best_reps_at_best_weight = setsData
+            .filter(s => s.weight === best_weight)
+            .reduce((max, s) => Math.max(max, s.reps), 0)
           const total_reps = setsData.reduce((sum, s) => sum + s.reps, 0)
           const volume = setsData.reduce((sum, s) => sum + s.reps * s.weight, 0)
           totalVolume += volume
+
+          // Détection PR
+          const prev = prevBest.get(exerciseId)
+          const isWeightPR = best_weight > 0 && (!prev || best_weight > prev.weight)
+          const isRepsPR = !isWeightPR && prev && best_weight === prev.weight && best_reps_at_best_weight > prev.reps
+          if (isWeightPR || isRepsPR) {
+            prs.push({ exercise_name: name, weight: best_weight, reps: best_reps_at_best_weight })
+          }
+
           return { exercise_id: exerciseId, exercise_name: name, sets: setsData, best_weight, total_reps, volume }
         })
       } else {
@@ -126,6 +160,7 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           mental: quest.xp_mental || 0,
           total: (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
         },
+        prs,
       }
 
       setSummary(sessionSummary)

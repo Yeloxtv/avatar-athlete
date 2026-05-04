@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PlayAndTrain</string>
+    <string name="title_activity_main">PlayAndTrain</string>
+    <string name="package_name">com.playandtrain.app</string>
+    <string name="custom_url_scheme">com.playandtrain.app</string>
+</resources>

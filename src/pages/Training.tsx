@@ -98,28 +98,32 @@ export default function Training() {
 
       setQuest(questData)
 
-      // 🏋️ Pour musculation : utiliser le hook pour créer la session
       if (questData.workout_type === 'strength') {
-        console.log('🏋️ Création session musculation via hook...')
-        // Pas besoin de créer manuellement, on utilisera startWorkout du hook
-      } else {
-        // Pour HIIT : vérifier session existante
-        const { data: sessions, error: sessErr } = await supabase
+        // Supprimer sessions incomplètes puis créer une nouvelle propre
+        await supabase
           .from('workout_sessions')
-          .select('*')
+          .delete()
           .eq('user_id', profile.id)
           .eq('quest_id', questId)
           .eq('is_completed', false)
-          .order('created_at', { ascending: false })
-          .limit(1)
-        
-        if (!sessErr) {
-          const existingSession = sessions?.[0]
-          if (existingSession) {
-            // Pour HIIT, on peut restaurer la session
-            console.log('📱 Session HIIT existante trouvée, restauration...')
-            // La logique de restauration sera gérée par le hook
-          }
+
+        const { data: newSession, error: sessErr } = await supabase
+          .from('workout_sessions')
+          .insert({
+            user_id: profile.id,
+            quest_id: questId,
+            workout_type: 'strength',
+            started_at: new Date().toISOString(),
+            is_completed: false,
+            total_time_seconds: 0,
+            rounds_completed: 0,
+          })
+          .select()
+          .single()
+
+        if (!sessErr && newSession) {
+          workoutSession.setSession(newSession)
+          workoutSession.setIsRunning(true)
         }
       }
     } catch (error) {
@@ -152,36 +156,8 @@ export default function Training() {
   const startWorkout = async () => {
     if (!quest || !profile) return
     try {
-      // Mise à jour user_quests
-      const { error: updateError } = await supabase
-        .from('user_quests')
-        .update({ status: 'available' })
-        .eq('user_id', profile.id)
-        .eq('quest_id', quest.id)
-
-      if (updateError) {
-        await supabase
-          .from('user_quests')
-          .insert({
-            user_id: profile.id,
-            quest_id: quest.id,
-            status: 'available',
-          })
-      }
-
-      // 🏋️ Pour musculation : créer session via hook
-      if (isStrengthWorkout) {
-        console.log('🏋️ Démarrage musculation avec création de session...')
-        await workoutSession.startWorkout() // Crée la session automatiquement
-        toast({
-          title: "Séance de musculation démarrée",
-          description: "Bonne séance ! Le timer est lancé.",
-        })
-      } else {
-        // ⚡ Pour HIIT : countdown
-        await workoutSession.startWorkout()
-        startCountdown()
-      }
+      await workoutSession.startWorkout()
+      startCountdown()
     } catch (error) {
       console.error('Error starting workout:', error)
       toast({

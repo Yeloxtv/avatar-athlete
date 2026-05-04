@@ -16,7 +16,14 @@
       "Skill(update-config:*)",
       "mcp__supabase__list_tables",
       "mcp__supabase__execute_sql",
-      "mcp__supabase__apply_migration"
+      "mcp__supabase__apply_migration",
+      "Bash(node -e \"require\\('./node_modules/lucide-react'\\)\")",
+      "Bash(node -e ' *)",
+      "mcp__supabase__get_project_url",
+      "Bash(node scripts/import-exercises.mjs)",
+      "mcp__supabase__get_publishable_keys",
+      "Bash(npm run *)",
+      "Bash(npx cap *)"
     ]
   },
   "enableAllProjectMcpServers": true

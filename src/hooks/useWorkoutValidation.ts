@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { RewardResult } from '@/types/rpg'
+import { useBadges } from '@/hooks/useBadges'
 
 interface UseWorkoutValidationProps {
   quest: Quest | null
@@ -16,24 +17,15 @@ interface UseWorkoutValidationProps {
 export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkoutValidationProps) {
   const { profile } = useProfile()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
+  const { unlock, unlockedIds } = useBadges()
   
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
 
   const validateWorkout = async () => {
-    console.log('🎯 validateWorkout appelée dans useWorkoutValidation')
-    console.log('🔍 Params:', { quest: !!quest, profile: !!profile, session: !!session, isProcessingRewards })
-    
-    if (!quest || !profile || !session || isProcessingRewards) {
-      console.log('❌ Conditions non remplies, arrêt de validateWorkout')
-      return
-    }
-    
-    try {
-      console.log('🔄 Début de la validation de l\'entraînement...')
+    if (!quest || !profile || !session || isProcessingRewards) return
 
-      // 1. Marquer la session comme terminée
-      console.log('📝 Mise à jour de la session workout...')
+    try {
       const { error: sessionError } = await supabase
         .from('workout_sessions')
         .update({
@@ -44,13 +36,8 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
         })
         .eq('id', session.id)
 
-      if (sessionError) {
-        console.error('❌ Erreur session:', sessionError)
-        throw sessionError
-      }
+      if (sessionError) throw sessionError
 
-      // 2. Marquer la quête comme terminée avec UPSERT
-      console.log('✅ Mise à jour du statut de la quête...')
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
@@ -58,44 +45,28 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id,quest_id'
-        })
+        }, { onConflict: 'user_id,quest_id' })
 
-      if (questStatusError) {
-        console.error('❌ ERREUR lors de la sauvegarde:', questStatusError)
-        throw questStatusError
-      } else {
-        console.log('✅ Statut sauvegardé avec succès')
-      }
+      if (questStatusError) throw questStatusError
 
-      // 3. Calculer les récompenses
-      console.log('🎁 Calcul des récompenses...')
       let rewards = null
       try {
         rewards = await processWorkoutRewards({
           durationMin: Math.ceil(time / 60),
           workoutType: quest.workout_type,
           intensity:
-            rounds >= (quest.rounds_target ?? 0)
-              ? 'HIGH'
-              : rounds >= Math.ceil((quest.rounds_target ?? 0) * 0.7)
-              ? 'MEDIUM'
-              : 'LOW',
+            rounds >= (quest.rounds_target ?? 0) ? 'HIGH'
+            : rounds >= Math.ceil((quest.rounds_target ?? 0) * 0.7) ? 'MEDIUM'
+            : 'LOW',
         })
-
         if (rewards) {
           setRewardResults(rewards)
           setTimeout(() => setShowRewardsModal(true), 500)
         }
-      } catch (rewardError) {
-        console.warn('⚠️ Erreur lors du calcul des récompenses (non bloquant):', rewardError)
-      }
+      } catch {}
 
-      // 4. Enregistrer l'audit XP
-      console.log('📊 Enregistrement de l\'audit XP...')
       try {
-        const { error: auditError } = await supabase.from('audit_xp').insert({
+        await supabase.from('audit_xp').insert({
           user_id: profile.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
@@ -104,69 +75,27 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
           delta_mental: quest.xp_mental,
           delta_total: quest.xp_force + quest.xp_endurance + quest.xp_agilite + quest.xp_mental,
         })
+      } catch {}
 
-        if (auditError) {
-          console.warn('⚠️ Erreur audit XP (non bloquant):', auditError)
-        }
-      } catch (auditError) {
-        console.warn('⚠️ Erreur audit XP (non bloquant):', auditError)
-      }
-
-      // 5. Débloquer la quête suivante
-      console.log('🔍 Recherche de la quête suivante...')
-      const { data: nextQuest, error: nextQuestError } = await supabase
+      const { data: nextQuest } = await supabase
         .from('quests')
-        .select('id, title')
+        .select('id')
         .eq('campaign_id', quest.campaign_id)
         .eq('order_index', quest.order_index + 1)
         .maybeSingle()
 
-      if (nextQuestError) {
-        console.warn('⚠️ Erreur recherche quête suivante:', nextQuestError)
-      }
-
       if (nextQuest) {
-        console.log('🔓 Déblocage de la quête suivante:', nextQuest.title)
-        
-        const { error: nextQuestError } = await supabase
-          .from('user_quests')
-          .upsert({
-            user_id: profile.id,
-            quest_id: nextQuest.id,
-            status: 'available',  // ← Changer 'todo' en 'available'
-          }, {
-            onConflict: 'user_id,quest_id'
-          })
-
-        if (nextQuestError) {
-          console.error('❌ Erreur déblocage quête suivante:', nextQuestError)
-        } else {
-          console.log('✅ Quête suivante débloquée avec succès')
-        }
+        await supabase.from('user_quests').upsert(
+          { user_id: profile.id, quest_id: nextQuest.id, status: 'available' },
+          { onConflict: 'user_id,quest_id' }
+        )
       }
 
-      // 6. Vérifier les badges
-      console.log('🏆 Vérification des badges...')
-      try {
-        await checkBadgeUnlocks()
-        console.log('✅ Vérification des badges terminée')
-      } catch (badgeError) {
-        console.warn('⚠️ Erreur lors de la vérification des badges (non bloquant):', badgeError)
-      }
+      await checkBadgeUnlocks()
 
-      console.log('🎉 Validation terminée avec succès !')
-      toast({
-        title: "✅ Validation réussie",
-        description: "Votre entraînement a été enregistré !",
-      })
-
-      // Si pas de récompenses à afficher, ouvrir directement la modal des récompenses
-      if (!rewards) {
-        setTimeout(() => setShowRewardsModal(true), 500)
-      }
+      if (!rewards) setTimeout(() => setShowRewardsModal(true), 500)
 
     } catch (error) {
-      console.error('❌ Erreur critique lors de la validation:', error)
       toast({
         title: 'Erreur de validation',
         description: "Impossible de valider l'entraînement. Veuillez réessayer.",
@@ -176,120 +105,137 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
   }
 
   const checkBadgeUnlocks = async () => {
-    if (!profile || !quest) {
-      console.log('ℹ️ Pas de profil ou quête, skip badges')
-      return
-    }
-
+    if (!profile || !quest) return
     try {
-      console.log('🏆 Début de la vérification des badges...')
-      
-      const { data: completedSessions, error: sessionsError } = await supabase
-        .from('user_quests')
-        .select('id')
-        .eq('user_id', profile.id)
-        .eq('status', 'completed')
-      
-      if (sessionsError) {
-        console.warn('⚠️ Erreur lors de la récupération des sessions:', sessionsError)
-        return
-      }
-      
-      const completedCount = (completedSessions?.length || 0) + 1
-      console.log(`📊 Nombre de quêtes complétées: ${completedCount}`)
+      const newBadges: string[] = []
 
-      let badgesEarned = 0
+      // Récupérer stats nécessaires en parallèle
+      const [
+        { data: sessions },
+        { data: prLogs },
+        { data: allLogs },
+        { data: completedCampaigns },
+      ] = await Promise.all([
+        supabase
+          .from('workout_sessions')
+          .select('id, total_time_seconds, started_at, quest_id')
+          .eq('user_id', profile.id)
+          .eq('is_completed', true),
+        supabase
+          .from('exercise_logs')
+          .select('exercise_id, weight_used, reps_completed')
+          .eq('session_id', session!.id),
+        supabase
+          .from('exercise_logs')
+          .select('reps_completed, weight_used')
+          .in('session_id', [session!.id]),
+        supabase
+          .from('user_quests')
+          .select('quest_id, quests!inner(campaign_id)')
+          .eq('user_id', profile.id)
+          .eq('status', 'completed'),
+      ])
 
-      // Badge Novice (3 quêtes complétées)
-      if (completedCount >= 3) {
-        console.log('🔍 Vérification du badge novice...')
-        const success = await unlockBadgeIfNotExists('novice-sans-cardio', 'Badge novice (3 quêtes)')
-        if (success) badgesEarned++
-      }
+      const sessionCount = (sessions?.length || 0)
+      const totalVolume = (allLogs || []).reduce((s, l) => s + (l.reps_completed * (Number(l.weight_used) || 0)), 0)
 
-      // Badge Superset
-      if (quest.title.toLowerCase().includes('superset')) {
-        console.log('🔍 Vérification du badge superset...')
-        const success = await unlockBadgeIfNotExists('superset-slayer', 'Badge superset slayer')
-        if (success) badgesEarned++
-      }
+      // Régularité
+      if (sessionCount >= 1)   newBadges.push('premier-pas')
+      if (sessionCount >= 10)  newBadges.push('habitue')
+      if (sessionCount >= 30)  newBadges.push('guerrier-du-mois')
+      if (sessionCount >= 100) newBadges.push('centurion')
 
-      // Badge Boss Final
-      if (quest.title.toLowerCase().includes('boss final') || quest.type === 'boss') {
-        console.log('🔍 Vérification du badge boss final...')
-        const success = await unlockBadgeIfNotExists('boss-final-vaincu', 'Badge boss final')
-        if (success) badgesEarned++
-      }
-
-      if (badgesEarned === 0) {
-        console.log('ℹ️ Aucun nouveau badge débloqué pour cette quête')
-      } else {
-        console.log(`🎉 ${badgesEarned} nouveau(x) badge(s) débloqué(s) !`)
-      }
-
-    } catch (error) {
-      console.warn('⚠️ Erreur dans checkBadgeUnlocks (non critique):', error)
-    }
-  }
-
-  const unlockBadgeIfNotExists = async (badgeSlug: string, badgeName: string): Promise<boolean> => {
-    try {
-      // 1. Récupérer le badge par son slug
-      const { data: badge, error: badgeError } = await supabase
-        .from('badges')
-        .select('id, name')
-        .eq('slug', badgeSlug)
-        .maybeSingle()
-      
-      if (badgeError || !badge) {
-        console.warn(`⚠️ Badge ${badgeSlug} non trouvé ou erreur:`, badgeError)
-        return false
+      // Streak 7 jours consécutifs
+      if (sessions && sessions.length >= 7) {
+        const sortedDays = [...new Set(
+          sessions.map(s => new Date(s.started_at).toDateString())
+        )].sort()
+        let streak = 1, maxStreak = 1
+        for (let i = 1; i < sortedDays.length; i++) {
+          const diff = (new Date(sortedDays[i]).getTime() - new Date(sortedDays[i - 1]).getTime()) / 86400000
+          streak = diff === 1 ? streak + 1 : 1
+          maxStreak = Math.max(maxStreak, streak)
+        }
+        if (maxStreak >= 7) newBadges.push('semaine-de-feu')
       }
 
-      // 2. Vérifier si l'utilisateur a déjà ce badge
-      const { data: existingBadge, error: checkError } = await supabase
-        .from('user_badges')
-        .select('id')
-        .eq('user_id', profile!.id)
-        .eq('badge_id', badge.id)
-        .maybeSingle()
+      // Performance — PRs (comparer avec sessions précédentes)
+      if (prLogs && prLogs.length > 0) {
+        const exerciseIds = [...new Set(prLogs.map(l => l.exercise_id))]
+        const { data: prevLogs } = await supabase
+          .from('exercise_logs')
+          .select('exercise_id, weight_used, reps_completed')
+          .in('exercise_id', exerciseIds)
+          .neq('session_id', session!.id)
 
-      if (checkError) {
-        console.warn(`⚠️ Erreur lors de la vérification du badge ${badgeSlug}:`, checkError)
-        return false
+        let prCount = 0
+        for (const log of prLogs) {
+          const prev = (prevLogs || []).filter(p => p.exercise_id === log.exercise_id)
+          const prevBest = prev.reduce((max, p) => Math.max(max, Number(p.weight_used) || 0), 0)
+          if ((Number(log.weight_used) || 0) > prevBest) prCount++
+        }
+
+        // Compter les PRs historiques totaux
+        const { data: allUserSessions } = await supabase
+          .from('workout_sessions')
+          .select('id')
+          .eq('user_id', profile.id)
+          .eq('is_completed', true)
+        const totalSessionIds = (allUserSessions || []).map(s => s.id)
+        if (totalSessionIds.length > 0) {
+          // Estimation PR totaux via badge déjà débloqué
+          if (prCount >= 1)  newBadges.push('premier-record')
+          if (unlockedIds.has('premier-record') && prCount >= 1) newBadges.push('machine')
+        }
       }
 
-      if (existingBadge) {
-        console.log(`ℹ️ Badge ${badgeName} déjà possédé`)
-        return false
+      // Volume total 10 000 kg
+      const { data: volumeData } = await supabase
+        .from('exercise_logs')
+        .select('reps_completed, weight_used')
+        .in('session_id', (sessions || []).map(s => s.id))
+      const lifetimeVolume = (volumeData || []).reduce((s, l) => s + l.reps_completed * (Number(l.weight_used) || 0), 0)
+      if (lifetimeVolume >= 10000) newBadges.push('titan')
+
+      // Sprint — séance < 30 min
+      if (time > 0 && time < 1800) newBadges.push('sprint')
+
+      // Sommet — programme complet
+      if (completedCampaigns && completedCampaigns.length > 0) {
+        const campaignGroups = new Map<string, number>()
+        for (const uq of completedCampaigns) {
+          const cid = (uq.quests as any)?.campaign_id
+          if (cid) campaignGroups.set(cid, (campaignGroups.get(cid) || 0) + 1)
+        }
+        const { data: allQuests } = await supabase
+          .from('quests')
+          .select('campaign_id')
+          .in('campaign_id', Array.from(campaignGroups.keys()))
+        const questsPerCampaign = new Map<string, number>()
+        for (const q of allQuests || []) {
+          questsPerCampaign.set(q.campaign_id, (questsPerCampaign.get(q.campaign_id) || 0) + 1)
+        }
+        for (const [cid, done] of campaignGroups) {
+          if (done >= (questsPerCampaign.get(cid) || 999)) {
+            newBadges.push('sommet')
+            break
+          }
+        }
       }
 
-      // 3. Débloquer le badge
-      const { error: insertError } = await supabase
-        .from('user_badges')
-        .insert({
-          user_id: profile!.id,
-          badge_id: badge.id,
-          earned_at: new Date().toISOString()
-        })
-      
-      if (insertError) {
-        console.warn(`⚠️ Erreur lors du déblocage du badge ${badgeSlug}:`, insertError)
-        return false
+      // Unlock tous les badges gagnés et notifier
+      for (const badgeId of [...new Set(newBadges)]) {
+        const gained = await unlock(badgeId)
+        if (gained) {
+          const { BADGES } = await import('@/hooks/useBadges')
+          const badge = BADGES.find(b => b.id === badgeId)
+          if (badge) {
+            toast({ title: '🏆 Nouveau badge !', description: badge.name })
+          }
+        }
       }
-
-      console.log(`🎉 Badge débloqué avec succès: ${badgeName}`)
-      
-      toast({
-        title: "🏆 Nouveau badge !",
-        description: `Vous avez débloqué: ${badge.name}`,
-      })
-
-      return true
-
-    } catch (error) {
-      console.warn(`⚠️ Erreur générale pour le badge ${badgeSlug}:`, error)
-      return false
+    } catch (err) {
+      console.warn('Badge check error (non bloquant):', err)
     }
   }
 
