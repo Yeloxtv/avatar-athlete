@@ -192,7 +192,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* MISSION DU JOUR */}
+      {/* QUETE DU JOUR */}
       {personalProgram && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
@@ -247,13 +247,23 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <p className="text-xs text-accent uppercase tracking-widest font-medium mb-1">
-                      {activeDayIndex === todayIndex ? 'Mission du jour' : DAYS[activeDayIndex]}
+                      {activeDayIndex === todayIndex ? 'Quête du jour' : DAYS[activeDayIndex]}
                     </p>
                     <h3 className="font-bold text-xl leading-tight">{todayQuest.title}</h3>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-lg font-bold">{todayQuest.estimated_duration}<span className="text-xs font-normal text-muted-foreground"> min</span></div>
                     <div className="text-xs text-muted-foreground">{todayQuest.exercises_count} exercices</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-accent/20 bg-background/40 p-3">
+                    <div className="text-xs text-muted-foreground">Objectif</div>
+                    <div className="font-bold">{Math.max(1, todayQuest.exercises_count * 3)} séries</div>
+                  </div>
+                  <div className="rounded-xl border border-accent/20 bg-background/40 p-3">
+                    <div className="text-xs text-muted-foreground">Récompense</div>
+                    <div className="font-bold text-accent">~{Math.max(60, todayQuest.exercises_count * 18)} XP</div>
                   </div>
                 </div>
                 <Button asChild className="w-full h-11 text-base font-bold">

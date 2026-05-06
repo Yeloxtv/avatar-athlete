@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { RewardResult } from '@/types/rpg'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
-import { List, Square, CheckSquare, Flame, Clock, X, RefreshCw, Search } from 'lucide-react'
+import { List, Square, CheckSquare, Flame, Clock, X, RefreshCw, Search, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 
@@ -47,6 +47,35 @@ function formatRestTimer(seconds: number): string {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
   return `0:${secs.toString().padStart(2, '0')}`
+}
+
+function playMicroRewardFeedback() {
+  if (typeof window === 'undefined') return
+
+  navigator.vibrate?.(35)
+
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) return
+
+    const audioContext = new AudioContextClass()
+    const oscillator = audioContext.createOscillator()
+    const gain = audioContext.createGain()
+
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(660, audioContext.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(990, audioContext.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.14)
+
+    oscillator.connect(gain)
+    gain.connect(audioContext.destination)
+    oscillator.start()
+    oscillator.stop(audioContext.currentTime + 0.15)
+  } catch {
+    // Le feedback audio est un bonus: on ignore les navigateurs qui le bloquent.
+  }
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
@@ -433,11 +462,24 @@ export default function StrengthWorkoutInterface({
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
   const [showPRFlash, setShowPRFlash] = useState(false)
+  const [liveXp, setLiveXp] = useState(0)
+  const [lastSetXp, setLastSetXp] = useState<number | null>(null)
+
+  const handleSetCompleted = useCallback((event: { xp: number }) => {
+    setLiveXp(prev => prev + event.xp)
+    setLastSetXp(event.xp)
+    playMicroRewardFeedback()
+
+    window.setTimeout(() => {
+      setLastSetXp(null)
+    }, 900)
+  }, [])
 
   const strengthWorkout = useStrengthWorkout({
     exercises: quest?.exercises || [],
     sessionId: session?.id ?? '',
-    restTimeSeconds: 60
+    restTimeSeconds: 60,
+    onSetCompleted: handleSetCompleted
   })
 
 
@@ -592,8 +634,14 @@ export default function StrengthWorkoutInterface({
 
   const exerciseNumber = state.currentExerciseIndex + 1
   const exerciseTotal = exercises.length
+  const totalSetsInWorkout = exercises.reduce((s, ex) => s + ((ex as any).sets_count || 3), 0)
+  const liveXpTarget = Math.max(totalSetsInWorkout * 18, liveXp || 1)
+  const liveXpProgress = Math.min(100, Math.round((liveXp / liveXpTarget) * 100))
 
   const nextLabel = (() => {
+    if (state.isResting && currentExercise) {
+      return `Série ${state.currentSet}/${totalSets} — ${currentExercise.name ?? ''}`
+    }
     if (state.currentSet < totalSets) {
       return `Série ${state.currentSet + 1}/${totalSets} — ${currentExercise?.name ?? ''}`
     }
@@ -701,6 +749,26 @@ export default function StrengthWorkoutInterface({
               />
             </div>
 
+            <div className="relative rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 overflow-hidden">
+              {lastSetXp !== null && (
+                <div className="absolute right-4 top-2 text-accent font-black text-lg animate-bounce">
+                  +{lastSetXp} XP
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-accent" />
+                  <span className="text-sm font-bold">XP live</span>
+                </div>
+                <span className="text-xl font-black text-accent tabular-nums">{liveXp}</span>
+              </div>
+              <Progress value={liveXpProgress} className="h-2" />
+              <div className="flex justify-between mt-1.5 text-[11px] text-muted-foreground">
+                <span>{state.completedSets}/{totalSetsInWorkout} séries validées</span>
+                <span>objectif {liveXpTarget} XP</span>
+              </div>
+            </div>
+
             {/* Indicateurs de séries */}
             <SeriesDots
               total={totalSets}
@@ -746,6 +814,7 @@ export default function StrengthWorkoutInterface({
               <p className="text-muted-foreground text-sm">
                 {state.completedSets} séries réalisées en {formatTime(time)}
               </p>
+              <p className="text-accent font-black text-2xl">+{liveXp} XP live</p>
             </div>
             <Button
               onClick={finishWorkout}

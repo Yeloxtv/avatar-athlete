@@ -37,6 +37,26 @@ interface UseSessionSummaryProps {
   time: number
 }
 
+type ExerciseLogRow = {
+  exercise_id: string
+  exercise_name?: string | null
+  global_exercise_id?: string | null
+  set_number: number
+  reps_completed: number
+  weight_used: number | null
+  quest_exercises?: { name?: string | null } | { name?: string | null }[] | null
+}
+
+const getLoggedExerciseName = (log: ExerciseLogRow): string => {
+  const relation = Array.isArray(log.quest_exercises) ? log.quest_exercises[0] : log.quest_exercises
+  return log.exercise_name || relation?.name || 'Exercice'
+}
+
+const getLoggedExerciseKey = (log: ExerciseLogRow): string => {
+  const name = getLoggedExerciseName(log).trim().toLowerCase()
+  return log.global_exercise_id || `${log.exercise_id}:${name}`
+}
+
 export function useSessionSummary({ quest, session, time }: UseSessionSummaryProps) {
   const { profile } = useProfile()
   const [summary, setSummary] = useState<SessionSummary | null>(null)
@@ -50,10 +70,11 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
       // Charger les vrais exercise_logs de la séance
       const { data: logs } = await supabase
         .from('exercise_logs')
-        .select('exercise_id, set_number, reps_completed, weight_used, quest_exercises(name)')
+        .select('exercise_id, exercise_name, global_exercise_id, set_number, reps_completed, weight_used, quest_exercises(name)')
         .eq('session_id', session.id)
         .order('exercise_id')
         .order('set_number')
+      const sessionLogs = (logs || []) as ExerciseLogRow[]
 
       // Compter séances cette semaine
       const oneWeekAgo = new Date()
@@ -72,35 +93,50 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
 
       const prs: SessionSummary['prs'] = []
 
-      if (logs && logs.length > 0) {
+      if (sessionLogs.length > 0) {
         // Grouper les logs par exercice
-        const grouped = new Map<string, typeof logs>()
-        for (const log of logs) {
-          if (!grouped.has(log.exercise_id)) grouped.set(log.exercise_id, [])
-          grouped.get(log.exercise_id)!.push(log)
+        const grouped = new Map<string, ExerciseLogRow[]>()
+        for (const log of sessionLogs) {
+          const key = getLoggedExerciseKey(log)
+          if (!grouped.has(key)) grouped.set(key, [])
+          grouped.get(key)!.push(log)
         }
 
         // Charger les meilleures perfs précédentes pour chaque exercice
-        const exerciseIds = Array.from(grouped.keys())
-        const { data: prevLogs } = await supabase
-          .from('exercise_logs')
-          .select('exercise_id, reps_completed, weight_used')
-          .in('exercise_id', exerciseIds)
-          .neq('session_id', session.id)
-          .order('weight_used', { ascending: false })
+        const exerciseIds = [...new Set(sessionLogs.map(log => log.exercise_id))]
+        const exerciseNames = [...new Set(sessionLogs.map(getLoggedExerciseName))]
+        const [prevByIdResult, prevByNameResult] = await Promise.all([
+          supabase
+            .from('exercise_logs')
+            .select('exercise_id, exercise_name, global_exercise_id, reps_completed, weight_used, quest_exercises(name)')
+            .in('exercise_id', exerciseIds)
+            .neq('session_id', session.id)
+            .order('weight_used', { ascending: false }),
+          supabase
+            .from('exercise_logs')
+            .select('exercise_id, exercise_name, global_exercise_id, reps_completed, weight_used, quest_exercises(name)')
+            .in('exercise_name', exerciseNames)
+            .neq('session_id', session.id)
+            .order('weight_used', { ascending: false }),
+        ])
+        const prevLogs = [
+          ...((prevByIdResult.data || []) as ExerciseLogRow[]),
+          ...((prevByNameResult.data || []) as ExerciseLogRow[]),
+        ]
 
         // Meilleur poids précédent par exercice
         const prevBest = new Map<string, { weight: number; reps: number }>()
-        for (const log of prevLogs || []) {
+        for (const log of prevLogs) {
+          const key = getLoggedExerciseKey(log)
           const w = Number(log.weight_used) || 0
-          const existing = prevBest.get(log.exercise_id)
+          const existing = prevBest.get(key)
           if (!existing || w > existing.weight || (w === existing.weight && log.reps_completed > existing.reps)) {
-            prevBest.set(log.exercise_id, { weight: w, reps: log.reps_completed })
+            prevBest.set(key, { weight: w, reps: log.reps_completed })
           }
         }
 
         exercises = Array.from(grouped.entries()).map(([exerciseId, sets]) => {
-          const name = (sets[0].quest_exercises as any)?.name || 'Exercice'
+          const name = getLoggedExerciseName(sets[0])
           const setsData = sets.map(s => ({
             set_number: s.set_number,
             reps: s.reps_completed,

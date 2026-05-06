@@ -9,12 +9,27 @@ interface UseStrengthWorkoutProps {
   exercises: QuestExercise[]
   sessionId: string
   restTimeSeconds?: number
+  onSetCompleted?: (event: {
+    exerciseId: string
+    exerciseName: string
+    setNumber: number
+    reps: number
+    weight: number
+    xp: number
+  }) => void
+}
+
+function calculateLiveSetXp(reps: number, weight?: number): number {
+  const effortXp = Math.min(10, Math.floor(Math.max(0, reps) / 2))
+  const loadXp = Math.min(12, Math.floor(Math.max(0, weight || 0) / 5))
+  return 10 + effortXp + loadXp
 }
 
 export const useStrengthWorkout = ({
   exercises: initialExercises,
   sessionId,
-  restTimeSeconds = 60
+  restTimeSeconds = 60,
+  onSetCompleted
 }: UseStrengthWorkoutProps) => {
 
   const [exercises, setExercises] = useState<QuestExercise[]>(initialExercises)
@@ -113,6 +128,15 @@ export const useStrengthWorkout = ({
         setLastPR({ exerciseName: currentExercise.name, weight: setData.weight, reps: setData.reps })
       }
 
+      onSetCompleted?.({
+        exerciseId: currentExercise.id,
+        exerciseName: currentExercise.name,
+        setNumber: state.currentSet,
+        reps: setData.reps,
+        weight: setData.weight ?? 0,
+        xp: calculateLiveSetXp(setData.reps, setData.weight),
+      })
+
       setState(prev => {
         const newState = {
           ...prev,
@@ -137,7 +161,7 @@ export const useStrengthWorkout = ({
     } catch (error) {
       console.error('Erreur sauvegarde set:', error)
     }
-  }, [sessionId, currentExercise, state.currentSet, totalSets, startRest])
+  }, [sessionId, currentExercise, state.currentSet, totalSets, startRest, onSetCompleted])
 
   const fetchBestPreviousPerformance = async (exerciseId: string): Promise<PreviousPerformance | null> => {
     if (!sessionId) return null
