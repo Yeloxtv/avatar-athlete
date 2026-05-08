@@ -36,7 +36,8 @@ interface HiitWorkoutInterfaceProps {
   isWorkPhase: boolean
   currentRound: number
   totalRounds: number
-  roundTimes: RoundTime[]  // ← AJOUTER
+  roundTimes: RoundTime[]
+  liveXp?: number
   onStart: () => void
   onPause: () => void
   onReset: () => void
@@ -56,7 +57,8 @@ export default function HiitWorkoutInterface({
   isWorkPhase,
   currentRound,
   totalRounds,
-  roundTimes,  // ← AJOUTER
+  roundTimes,
+  liveXp = 0,
   onStart,
   onPause,
   onReset,
@@ -268,8 +270,9 @@ export default function HiitWorkoutInterface({
         isWorkPhase={isWorkPhase}
         exerciseName={quest.exercises[exerciseIndex]?.name || ''}
         currentRound={currentRound}
-        totalRounds={totalRounds} // ← AJOUTER cette prop
+        totalRounds={totalRounds}
         exerciseIndex={exerciseIndex}
+        liveXp={liveXp}
       />
 
       {/* Liste des exercices - Version mobile ultra-compacte */}

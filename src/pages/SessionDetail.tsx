@@ -4,7 +4,19 @@ import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Clock, Dumbbell, FileText, Download } from 'lucide-react'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
+} from '@/components/ui/sheet'
+import { toast } from '@/hooks/use-toast'
+import { ArrowLeft, Clock, Dumbbell, FileText, Download, Pencil, Trash2 } from 'lucide-react'
 
 interface ExerciseLog {
   exercise_id: string
@@ -141,6 +153,16 @@ export default function SessionDetail() {
   const [loading, setLoading] = useState(true)
   const printRef = useRef<HTMLDivElement>(null)
 
+  // Edit state
+  const [showEdit, setShowEdit] = useState(false)
+  const [editNote, setEditNote] = useState('')
+  const [editMinutes, setEditMinutes] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   useEffect(() => {
     if (profile && sessionId) loadSession()
   }, [profile, sessionId])
@@ -202,6 +224,51 @@ export default function SessionDetail() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const openEdit = () => {
+    if (!session) return
+    setEditNote(session.note || '')
+    setEditMinutes(String(Math.floor(session.total_time_seconds / 60)))
+    setShowEdit(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!session || !profile) return
+    setIsSaving(true)
+    const newSeconds = Math.max(0, parseInt(editMinutes || '0', 10)) * 60
+    const { error } = await supabase
+      .from('workout_sessions')
+      .update({ note: editNote || null, total_time_seconds: newSeconds })
+      .eq('id', session.id)
+      .eq('user_id', profile.id)
+    setIsSaving(false)
+    if (error) {
+      toast({ title: 'Erreur', description: 'Impossible de sauvegarder.', variant: 'destructive' })
+      return
+    }
+    setSession({ ...session, note: editNote || null, total_time_seconds: newSeconds })
+    setShowEdit(false)
+    toast({ title: 'Séance mise à jour' })
+  }
+
+  const handleDelete = async () => {
+    if (!session || !profile) return
+    setIsDeleting(true)
+    // Supprimer les logs liés puis la session
+    await supabase.from('exercise_logs').delete().eq('session_id', session.id)
+    const { error } = await supabase
+      .from('workout_sessions')
+      .delete()
+      .eq('id', session.id)
+      .eq('user_id', profile.id)
+    setIsDeleting(false)
+    if (error) {
+      toast({ title: 'Erreur', description: 'Impossible de supprimer.', variant: 'destructive' })
+      return
+    }
+    toast({ title: 'Séance supprimée' })
+    navigate('/statistics')
   }
 
   const handlePrint = () => {
@@ -274,10 +341,18 @@ export default function SessionDetail() {
               <p className="text-sm text-muted-foreground capitalize">{formatDate(session.started_at)}</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handlePrint} className="flex items-center gap-2">
-            <Download className="w-4 h-4" />
-            Exporter PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={openEdit}>
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="text-destructive hover:text-destructive" onClick={() => setShowDeleteConfirm(true)}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint} className="flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              PDF
+            </Button>
+          </div>
         </div>
 
         {/* Zone imprimable */}
@@ -373,6 +448,69 @@ export default function SessionDetail() {
 
         </div>
       </div>
+
+      {/* Sheet — édition */}
+      <Sheet open={showEdit} onOpenChange={setShowEdit}>
+        <SheetContent side="bottom" className="rounded-t-2xl px-4 pb-8 space-y-5">
+          <SheetHeader>
+            <SheetTitle>Modifier la séance</SheetTitle>
+          </SheetHeader>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-duration">Durée (minutes)</Label>
+            <Input
+              id="edit-duration"
+              type="number"
+              min="0"
+              value={editMinutes}
+              onChange={e => setEditMinutes(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-note">Note</Label>
+            <Textarea
+              id="edit-note"
+              rows={4}
+              placeholder="Sensations, observations..."
+              value={editNote}
+              onChange={e => setEditNote(e.target.value)}
+              className="resize-none"
+            />
+          </div>
+
+          <SheetFooter className="flex-row gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setShowEdit(false)}>
+              Annuler
+            </Button>
+            <Button className="flex-1" onClick={handleSaveEdit} disabled={isSaving}>
+              {isSaving ? 'Sauvegarde...' : 'Enregistrer'}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* AlertDialog — suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette séance ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. La séance et tous ses logs seront définitivement supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Suppression...' : 'Supprimer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

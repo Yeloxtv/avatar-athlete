@@ -7,7 +7,8 @@ import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift } from 'lucide-react'
+import { LEVELS } from '@/data/rpgLevels'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift, User } from 'lucide-react'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -132,49 +133,84 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-6">
 
-      {/* HEADER — Profil + XP */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest">Niveau {level}</p>
-            <h1 className="text-2xl font-bold">{profile?.display_name || 'Athlète'}</h1>
-          </div>
-          <div className="w-12 h-12 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center text-2xl">
-            {profile?.avatar_emoji || '⚔️'}
-          </div>
-        </div>
+      {/* WIDGET PROFIL */}
+      <Link to="/profile" className="block">
+        <div className="rounded-2xl border border-accent/20 bg-card/60 p-4 space-y-3 hover:border-accent/40 transition-colors">
 
-        {/* Barre XP */}
-        <div className="space-y-1">
-          <div className="flex justify-between items-center text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-accent" />{xp} XP</span>
-            <span>{levelProgress.remaining > 0 ? `Niveau ${level + 1} dans ${levelProgress.remaining} XP` : 'Niveau max atteint'}</span>
+          {/* Ligne 1 : avatar + identité + lien */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-accent/15 border-2 border-accent/30 flex items-center justify-center text-2xl shrink-0">
+              {profile?.avatar_emoji || '⚔️'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <h1 className="font-black text-lg leading-tight truncate">{profile?.display_name || 'Athlète'}</h1>
+                <span className="text-xs font-bold text-accent shrink-0">Niv. {level}</span>
+              </div>
+              <p className="text-xs text-accent/80 font-semibold truncate">
+                {LEVELS.find(l => l.level === level)?.title ?? 'Apprenti Éveillé'}
+              </p>
+            </div>
+            <User className="w-4 h-4 text-muted-foreground shrink-0" />
           </div>
-          <Progress value={xpProgressPercent} className="h-2" />
-        </div>
 
-        {/* Streak semaine */}
-        <div className="flex items-center gap-2">
-          <Flame className="w-4 h-4 text-orange-400 shrink-0" />
-          <div className="flex gap-1.5 flex-1">
-            {DAYS.map((day, i) => {
-              const done = streak.weekDays.includes(i)
-              const isToday = i === todayIndex
-              return (
-                <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                  <div className={`w-full h-2 rounded-full transition-all ${
-                    done ? 'bg-orange-400' : isToday ? 'bg-accent/40' : 'bg-muted/40'
-                  }`} />
-                  <span className={`text-[10px] ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
-                    {day}
-                  </span>
+          {/* Barre XP */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1"><Zap className="w-2.5 h-2.5 text-accent" />{xp.toLocaleString()} XP</span>
+              <span>{levelProgress.remaining > 0 ? `${levelProgress.remaining} XP → Niv. ${level + 1}` : 'Niveau max'}</span>
+            </div>
+            <Progress value={xpProgressPercent} className="h-1.5" />
+          </div>
+
+          {/* Mini barres stats */}
+          {((profile?.stat_force || 0) + (profile?.stat_endurance || 0) + (profile?.stat_agilite || 0) + (profile?.stat_mental || 0)) > 0 && (
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'FOR', value: profile?.stat_force || 0,     bg: 'bg-stats-force' },
+                { label: 'END', value: profile?.stat_endurance || 0, bg: 'bg-stats-endurance' },
+                { label: 'AGI', value: profile?.stat_agilite || 0,   bg: 'bg-stats-agilite' },
+                { label: 'MEN', value: profile?.stat_mental || 0,    bg: 'bg-stats-mental' },
+              ].map(({ label, value, bg }) => (
+                <div key={label} className="space-y-0.5">
+                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                    <span className="font-bold">{label}</span>
+                    <span>{value}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-muted/30 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${bg}`}
+                      style={{ width: `${Math.min(100, Math.round((value / 500) * 100))}%` }}
+                    />
+                  </div>
                 </div>
-              )
-            })}
+              ))}
+            </div>
+          )}
+
+          {/* Streak semaine */}
+          <div className="flex items-center gap-2 pt-0.5">
+            <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+            <div className="flex gap-1 flex-1">
+              {DAYS.map((day, i) => {
+                const done = streak.weekDays.includes(i)
+                const isToday = i === todayIndex
+                return (
+                  <div key={day} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className={`w-full h-1.5 rounded-full transition-all ${
+                      done ? 'bg-orange-400' : isToday ? 'bg-accent/40' : 'bg-muted/40'
+                    }`} />
+                    <span className={`text-[9px] ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
+                      {day}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <span className="text-[10px] font-semibold text-orange-400 shrink-0">{streakLabel}</span>
           </div>
-          <span className="text-xs font-semibold text-orange-400 shrink-0">{streakLabel}</span>
         </div>
-      </div>
+      </Link>
 
       {/* QUETE QUOTIDIENNE */}
       <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">

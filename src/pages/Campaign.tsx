@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
@@ -14,7 +15,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 
-// Import des nouveaux composants et hooks
 import { useCampaignView } from '@/hooks/useCampaignView';
 import { QuestCard } from '@/components/campaign/QuestCard';
 import { LoadingState } from '@/components/campaign/LoadingState';
@@ -24,6 +24,20 @@ export default function Campaign() {
   const { activeCampaign, quests, loading, navigateToQuest, navigateBack, resetCampaign } = useCampaignView();
   const { toast } = useToast();
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [searchParams] = useSearchParams();
+  const nextQuestId = searchParams.get('next');
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+  const [highlightActive, setHighlightActive] = useState(!!nextQuestId);
+
+  // Scroll vers la prochaine quête et animer
+  useEffect(() => {
+    if (!nextQuestId || loading || !highlightRef.current) return;
+    const t = setTimeout(() => {
+      highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+    const t2 = setTimeout(() => setHighlightActive(false), 3000);
+    return () => { clearTimeout(t); clearTimeout(t2); };
+  }, [nextQuestId, loading]);
 
   const handleResetCampaign = async () => {
     try {
@@ -107,15 +121,30 @@ export default function Campaign() {
 
         {/* Quests List */}
         <div className="space-y-4">
-          {quests.map((quest, index) => (
-            <QuestCard
-              key={quest.id}
-              quest={quest}
-              index={index}
-              status={quest.user_status || 'locked'}
-              onClick={() => navigateToQuest(quest.id)}
-            />
-          ))}
+          {quests.map((quest, index) => {
+            const isNext = quest.id === nextQuestId;
+            return (
+              <div
+                key={quest.id}
+                ref={isNext ? highlightRef : undefined}
+                className={isNext && highlightActive
+                  ? 'rounded-2xl ring-2 ring-accent ring-offset-2 ring-offset-background transition-all duration-700'
+                  : ''}
+              >
+                {isNext && highlightActive && (
+                  <div className="text-xs font-black text-accent uppercase tracking-widest text-center pb-1.5 animate-pulse">
+                    ⚔️ Prochaine quête débloquée
+                  </div>
+                )}
+                <QuestCard
+                  quest={quest}
+                  index={index}
+                  status={quest.user_status || 'locked'}
+                  onClick={() => navigateToQuest(quest.id)}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Message si aucune quête */}

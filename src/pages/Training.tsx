@@ -283,8 +283,9 @@ export default function Training() {
           exerciseIndex={hiitTimer.exerciseIndex}
           isWorkPhase={hiitTimer.isWorkPhase}
           currentRound={hiitTimer.currentRound}
-          totalRounds={quest.rounds || 1} // ← S'assurer qu'on passe le bon nombre de tours
+          totalRounds={quest.rounds || 1}
           roundTimes={hiitTimer.roundTimes}
+          liveXp={hiitTimer.liveXp}
           onStart={startWorkout}
           onPause={workoutSession.pauseWorkout}
           onReset={workoutSession.resetWorkout}

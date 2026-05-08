@@ -1,7 +1,8 @@
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Play, Pause, RotateCcw, Plus } from 'lucide-react'
+import { Play, Pause, RotateCcw, Plus, Zap } from 'lucide-react'
 
 interface WorkoutTimerProps {
   // Timer principal
@@ -12,10 +13,10 @@ interface WorkoutTimerProps {
   onReset: () => void
   onFinishWorkout: () => void
   onAddRound: () => void
-  
+
   // Pour musculation (simple)
   isStrengthWorkout?: boolean
-  
+
   // Pour HIIT (complexe)
   quest?: {
     workout_type: string
@@ -28,7 +29,9 @@ interface WorkoutTimerProps {
   isWorkPhase?: boolean
   exerciseName?: string
   currentRound?: number
+  totalRounds?: number
   exerciseIndex?: number
+  liveXp?: number
 }
 
 export default function WorkoutTimer({
@@ -45,9 +48,39 @@ export default function WorkoutTimer({
   isWorkPhase,
   exerciseName,
   currentRound,
-  exerciseIndex = 0
+  totalRounds,
+  exerciseIndex = 0,
+  liveXp = 0,
 }: WorkoutTimerProps) {
-  
+  const [xpPopup, setXpPopup] = useState<{ id: number; value: number } | null>(null)
+  const prevRoundRef = useRef(currentRound)
+  const prevLiveXpRef = useRef(liveXp)
+
+  // Déclencher popup XP quand liveXp monte (HIIT: round validé ou cycle complété)
+  useEffect(() => {
+    if (isStrengthWorkout) return
+    const gained = liveXp - prevLiveXpRef.current
+    if (gained > 0) {
+      setXpPopup({ id: Date.now(), value: gained })
+      const t = setTimeout(() => setXpPopup(null), 900)
+      prevLiveXpRef.current = liveXp
+      return () => clearTimeout(t)
+    }
+    prevLiveXpRef.current = liveXp
+  }, [liveXp, isStrengthWorkout])
+
+  // Déclencher popup XP aussi sur ajout de round AMRAP
+  useEffect(() => {
+    if (isStrengthWorkout) return
+    if (currentRound !== undefined && prevRoundRef.current !== undefined && currentRound > prevRoundRef.current) {
+      setXpPopup({ id: Date.now(), value: 15 })
+      const t = setTimeout(() => setXpPopup(null), 900)
+      prevRoundRef.current = currentRound
+      return () => clearTimeout(t)
+    }
+    prevRoundRef.current = currentRound
+  }, [currentRound, isStrengthWorkout])
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -82,9 +115,28 @@ export default function WorkoutTimer({
   return (
     <Card className="border-accent/30 shadow-lg">
       <CardHeader className="text-center space-y-4">
-        
-        {/* Timer principal */}
-        <CardTitle className="text-4xl font-mono">{formatTime(time)}</CardTitle>
+
+        {/* Timer principal + XP popup HIIT */}
+        <div className="relative inline-block mx-auto">
+          <CardTitle className="text-4xl font-mono">{formatTime(time)}</CardTitle>
+          {xpPopup && (
+            <div
+              key={xpPopup.id}
+              className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1 text-accent font-black text-lg pointer-events-none"
+              style={{ animation: 'xpFloat 0.9s ease-out forwards' }}
+            >
+              <Zap className="w-4 h-4" />+{xpPopup.value} XP
+            </div>
+          )}
+        </div>
+
+        {/* Compteur XP live HIIT */}
+        {!isStrengthWorkout && liveXp > 0 && (
+          <div className="flex items-center justify-center gap-1.5 text-sm font-bold text-accent/80">
+            <Zap className="w-3.5 h-3.5" />
+            <span>{liveXp} XP cette séance</span>
+          </div>
+        )}
         
         {/* EXERCICE ACTUEL + SUIVANT - Style RPG harmonisé */}
         {!isStrengthWorkout && exerciseName && (

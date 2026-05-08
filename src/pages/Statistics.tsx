@@ -3,7 +3,13 @@ import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ChevronRight, Dumbbell, Clock, Trophy, FileText } from 'lucide-react'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { toast } from '@/hooks/use-toast'
+import { ArrowLeft, ChevronRight, Dumbbell, Clock, Trophy, FileText, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface SessionLog {
@@ -28,6 +34,8 @@ export default function Statistics() {
   const { profile } = useProfile()
   const [sessions, setSessions] = useState<SessionLog[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     if (profile) loadSessions()
@@ -101,6 +109,25 @@ export default function Statistics() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!deleteTarget || !profile) return
+    setIsDeleting(true)
+    await supabase.from('exercise_logs').delete().eq('session_id', deleteTarget)
+    const { error } = await supabase
+      .from('workout_sessions')
+      .delete()
+      .eq('id', deleteTarget)
+      .eq('user_id', profile.id)
+    setIsDeleting(false)
+    setDeleteTarget(null)
+    if (error) {
+      toast({ title: 'Erreur', description: 'Impossible de supprimer.', variant: 'destructive' })
+      return
+    }
+    setSessions(prev => prev.filter(s => s.id !== deleteTarget))
+    toast({ title: 'Séance supprimée' })
+  }
+
   const formatDate = (iso: string) => {
     const d = new Date(iso)
     return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -171,21 +198,39 @@ export default function Statistics() {
             return (
               <Card
                 key={session.id}
-                className="overflow-hidden cursor-pointer hover:border-accent/40 transition-colors"
-                onClick={() => navigate(`/statistics/session/${session.id}`)}
+                className="overflow-hidden hover:border-accent/40 transition-colors"
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => navigate(`/statistics/session/${session.id}`)}
+                    >
                       <div className="font-semibold truncate">{session.quest_title}</div>
                       <div className="text-xs text-muted-foreground capitalize mt-0.5">
                         {formatDate(session.started_at)}
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-8 h-8 text-muted-foreground hover:text-destructive"
+                        onClick={e => { e.stopPropagation(); setDeleteTarget(session.id) }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <ChevronRight
+                        className="w-4 h-4 text-muted-foreground cursor-pointer"
+                        onClick={() => navigate(`/statistics/session/${session.id}`)}
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex gap-3 mt-3 text-xs text-muted-foreground">
+                  <div
+                    className="flex gap-3 mt-3 text-xs text-muted-foreground cursor-pointer"
+                    onClick={() => navigate(`/statistics/session/${session.id}`)}
+                  >
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatTime(session.total_time_seconds)}
@@ -213,6 +258,26 @@ export default function Statistics() {
           })}
         </div>
       )}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cette séance ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. La séance et tous ses logs seront définitivement supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Suppression...' : 'Supprimer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

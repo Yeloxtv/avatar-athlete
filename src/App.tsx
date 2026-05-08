@@ -16,6 +16,7 @@ import SessionSummary from "@/pages/SessionSummary";
 import SessionDetail from "@/pages/SessionDetail";
 import Badges from "@/pages/Badges";
 import Exercises from "@/pages/Exercises";
+import Profile from "@/pages/Profile";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -61,6 +62,7 @@ function ProtectedLayout() {
           <Route path="/statistics/session/:sessionId" element={<SessionDetail />} />
           <Route path="/badges" element={<Badges />} />
           <Route path="/exercises" element={<Exercises />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

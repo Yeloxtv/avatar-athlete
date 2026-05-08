@@ -16,6 +16,43 @@ import { toast } from '@/hooks/use-toast'
 import { XpService } from '@/services/xpService'
 import { StreakService } from '@/services/streakService'
 
+// ─── Sons ──────────────────────────────────────────────────────────────────
+
+function playSound(type: 'levelUp' | 'questComplete' | 'statGain') {
+  if (typeof window === 'undefined') return
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) return
+    const ctx = new AudioContextClass()
+    const gain = ctx.createGain()
+    gain.connect(ctx.destination)
+
+    const notes: number[] = type === 'levelUp'
+      ? [523, 659, 784, 1047]   // Do Mi Sol Do — accord montant triomphant
+      : type === 'questComplete'
+      ? [659, 784, 1047]        // Mi Sol Do
+      : [880, 1047]             // La Do — bref et doux
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = type === 'levelUp' ? 'triangle' : 'sine'
+      osc.frequency.value = freq
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.12)
+      g.gain.exponentialRampToValueAtTime(type === 'levelUp' ? 0.12 : 0.07, ctx.currentTime + i * 0.12 + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.12 + 0.18)
+      osc.connect(g)
+      g.connect(ctx.destination)
+      osc.start(ctx.currentTime + i * 0.12)
+      osc.stop(ctx.currentTime + i * 0.12 + 0.2)
+    })
+
+    if (type === 'levelUp') navigator.vibrate?.([50, 30, 80])
+  } catch {
+    // ignoré silencieusement
+  }
+}
+
 export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
@@ -30,7 +67,10 @@ export default function SessionSummary() {
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
   const [xpDisplayed, setXpDisplayed] = useState(0)
   const [showConfetti, setShowConfetti] = useState(true)
+  const [showLevelUpBurst, setShowLevelUpBurst] = useState(false)
+  const [statsVisible, setStatsVisible] = useState(false)
   const xpAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const soundsFiredRef = useRef(false)
 
   const { summary, loading: summaryLoading, generateSummary, formatVolume, getIntensityEmoji } = useSessionSummary({
     quest,
@@ -85,24 +125,42 @@ export default function SessionSummary() {
     }
   }, [quest, session, summaryLoading, summary])
 
-  // Animation XP
+  // Animation XP + sons déclenchés après le count-up
   useEffect(() => {
     if (!summary || summary.xp.total === 0) return
+    soundsFiredRef.current = false
     const target = summary.xp.total
     const duration = 1200
     const steps = 40
     const increment = target / steps
     let current = 0
+    // Calculer levelUp ici pour la closure
+    const curXp = profile?.xp_total || 0
+    const projXp = curXp + target
+    const isLevelUp = XpService.calculateLevelFromXp(projXp) > XpService.calculateLevelFromXp(curXp)
+
     xpAnimRef.current = setInterval(() => {
       current += increment
       if (current >= target) {
         setXpDisplayed(target)
         clearInterval(xpAnimRef.current!)
+        if (!soundsFiredRef.current) {
+          soundsFiredRef.current = true
+          if (isLevelUp) {
+            setShowLevelUpBurst(true)
+            playSound('levelUp')
+            setTimeout(() => setShowLevelUpBurst(false), 1200)
+          } else if (summary.dailyQuest.isComplete) {
+            playSound('questComplete')
+          }
+          setTimeout(() => setStatsVisible(true), 200)
+        }
       } else {
         setXpDisplayed(Math.round(current))
       }
     }, duration / steps)
     return () => clearInterval(xpAnimRef.current!)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.xp.total])
 
   const handleSaveNote = async () => {
@@ -256,20 +314,45 @@ export default function SessionSummary() {
               </div>
 
               {levelUpPreview && (
-                <div className="rounded-xl border border-accent/40 bg-accent/10 p-3 flex items-center gap-2 text-accent font-bold">
-                  <Crown className="w-4 h-4" />
-                  Level up imminent : {XpService.getLevelTitle(projectedLevel)}
+                <div
+                  className="rounded-xl border-2 border-accent bg-accent/15 p-4 flex items-center gap-3 text-accent font-black"
+                  style={showLevelUpBurst ? { animation: 'levelUpBurst 0.5s ease-out forwards' } : {}}
+                >
+                  <div className="relative shrink-0">
+                    <Crown className={`w-6 h-6 ${showLevelUpBurst ? 'animate-spin' : ''}`} />
+                    {showLevelUpBurst && (
+                      <div className="absolute inset-0 rounded-full bg-accent/40 animate-ping" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-widest text-accent/70 font-bold">Level Up !</div>
+                    <div className="text-base">{XpService.getLevelTitle(projectedLevel)}</div>
+                  </div>
+                  {showLevelUpBurst && (
+                    <Sparkles className="w-5 h-5 ml-auto animate-bounce text-accent" />
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Stats RPG */}
+          {/* Stats RPG — apparition décalée */}
           <div className="grid grid-cols-4 gap-2">
-            <StatReward label="Force" value={summary.xp.force} className="text-stats-force" />
-            <StatReward label="Endurance" value={summary.xp.endurance} className="text-stats-endurance" />
-            <StatReward label="Agilité" value={summary.xp.agilite} className="text-stats-agilite" />
-            <StatReward label="Mental" value={summary.xp.mental} className="text-stats-mental" />
+            {([
+              { label: 'Force',     value: summary.xp.force,     className: 'text-stats-force',     delay: 0 },
+              { label: 'Endurance', value: summary.xp.endurance, className: 'text-stats-endurance', delay: 80 },
+              { label: 'Agilité',   value: summary.xp.agilite,   className: 'text-stats-agilite',   delay: 160 },
+              { label: 'Mental',    value: summary.xp.mental,    className: 'text-stats-mental',    delay: 240 },
+            ] as const).map(({ label, value, className, delay }) => (
+              <StatReward
+                key={label}
+                label={label}
+                value={value}
+                className={className}
+                visible={statsVisible}
+                delay={delay}
+              />
+            ))}
           </div>
 
           {/* Streak semaine */}
@@ -420,10 +503,47 @@ export default function SessionSummary() {
   )
 }
 
-function StatReward({ label, value, className }: { label: string; value: number; className: string }) {
+function StatReward({
+  label,
+  value,
+  className,
+  visible = true,
+  delay = 0,
+}: {
+  label: string
+  value: number
+  className: string
+  visible?: boolean
+  delay?: number
+}) {
+  const [displayed, setDisplayed] = useState(0)
+  const ran = useRef(false)
+
+  useEffect(() => {
+    if (!visible || ran.current || value === 0) return
+    ran.current = true
+    const timer = setTimeout(() => {
+      playSound('statGain')
+      const steps = 12
+      const duration = 400
+      let step = 0
+      const id = setInterval(() => {
+        step++
+        setDisplayed(Math.round((value * step) / steps))
+        if (step >= steps) clearInterval(id)
+      }, duration / steps)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [visible, value, delay])
+
   return (
-    <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 text-center min-w-0">
-      <div className={`text-lg font-black ${className}`}>+{value}</div>
+    <div
+      className="rounded-xl border border-muted/30 bg-muted/10 p-2 text-center min-w-0 transition-all duration-300"
+      style={visible
+        ? { animation: `statCountUp 0.35s ease-out ${delay}ms both` }
+        : { opacity: 0, transform: 'translateY(6px)' }}
+    >
+      <div className={`text-lg font-black ${className}`}>+{displayed}</div>
       <div className="text-[10px] text-muted-foreground truncate">{label}</div>
     </div>
   )

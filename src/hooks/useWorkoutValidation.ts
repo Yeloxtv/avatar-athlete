@@ -21,6 +21,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
   
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
+  const [postValidationDest, setPostValidationDest] = useState<string | null>(null)
 
   const validateWorkout = async () => {
     if (!quest || !profile || !session || isProcessingRewards) return
@@ -89,6 +90,22 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
           { user_id: profile.id, quest_id: nextQuest.id, status: 'available' },
           { onConflict: 'user_id,quest_id' }
         )
+      }
+
+      // Préparer la destination post-modal
+      if (quest.campaign_id) {
+        const { data: campaign } = await supabase
+          .from('campaigns')
+          .select('slug')
+          .eq('id', quest.campaign_id)
+          .maybeSingle()
+
+        if (campaign?.slug) {
+          const dest = nextQuest
+            ? `/campaign/${campaign.slug}?next=${nextQuest.id}`
+            : `/campaign/${campaign.slug}`
+          setPostValidationDest(dest)
+        }
       }
 
       await checkBadgeUnlocks()
@@ -239,28 +256,10 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
     }
   }
 
-  const handleRewardsModalClose = async () => {
+  const handleRewardsModalClose = () => {
     setShowRewardsModal(false)
     setRewardResults(null)
-
-    try {
-      if (quest?.campaign_id) {
-        const { data: campaign } = await supabase
-          .from('campaigns')
-          .select('slug')
-          .eq('id', quest.campaign_id)
-          .maybeSingle()
-
-        if (campaign?.slug) {
-          window.location.href = '/'
-          return
-        }
-      }
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Erreur lors de la redirection:', error)
-      window.location.href = '/'
-    }
+    window.location.href = postValidationDest ?? '/'
   }
 
   return {
@@ -268,6 +267,6 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
     showRewardsModal,
     rewardResults,
     handleRewardsModalClose,
-    isProcessingRewards
+    isProcessingRewards,
   }
 }

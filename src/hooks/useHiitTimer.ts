@@ -12,20 +12,22 @@ interface UseHiitTimerProps {
   setWorkTime: React.Dispatch<React.SetStateAction<number>>
 }
 
-export function useHiitTimer({ 
-  quest, 
-  isStrengthWorkout, 
-  isRunning, 
-  time, 
-  setTime, 
-  workTime, 
-  setWorkTime 
+export function useHiitTimer({
+  quest,
+  isStrengthWorkout,
+  isRunning,
+  time,
+  setTime,
+  workTime,
+  setWorkTime
 }: UseHiitTimerProps) {
   const [exerciseIndex, setExerciseIndex] = useState(0)
   const [isWorkPhase, setIsWorkPhase] = useState(true)
   const [currentRound, setCurrentRound] = useState(1)
   const [totalRounds, setTotalRounds] = useState(1)
   const [roundTimes, setRoundTimes] = useState<any[]>([])
+  const [liveXp, setLiveXp] = useState(0)
+  const prevCycleRef = React.useRef(0)
 
   // Timer principal
   useEffect(() => {
@@ -68,6 +70,12 @@ export function useHiitTimer({
       const completedCycles = Math.floor(workTime / cycleTime)
       const newExerciseIndex = completedCycles % (quest.exercises?.length || 1)
       setExerciseIndex(newExerciseIndex)
+
+      // XP live : +12 XP par cycle Tabata complété
+      if (completedCycles > prevCycleRef.current) {
+        setLiveXp(prev => prev + 12)
+        prevCycleRef.current = completedCycles
+      }
     }
 
     // AMRAP: temps limite fixe
@@ -108,28 +116,22 @@ export function useHiitTimer({
   }
 
   const addRound = () => {
-    console.log('➕ addRound appelée - Round ajouté!')
     setCurrentRound(prev => prev + 1)
     setTotalRounds(prev => prev + 1)
-    
-    // Optionnel : ajouter le temps du round actuel
+    setLiveXp(prev => prev + 15)
     if (roundTimes) {
       setRoundTimes(prev => [...prev, { round: currentRound, time: workTime || 0 }])
     }
   }
 
   return {
-    // États HIIT
     workTime,
     exerciseIndex,
     isWorkPhase,
     currentRound,
     totalRounds,
     roundTimes,
-    
-    // Actions HIIT
+    liveXp,
     addRound,
-    
-    // ... autres propriétés
   }
 }
