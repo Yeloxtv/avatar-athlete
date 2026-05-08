@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { useSessionSummary } from '@/hooks/useSessionSummary'
@@ -10,9 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
-import { Clock, Dumbbell, Zap, Flame, Loader2, ChevronDown, ChevronUp, Trophy, Crown, Sparkles } from 'lucide-react'
+import { ConfettiEffect } from '@/components/ConfettiEffect'
+import { Clock, Dumbbell, Zap, Flame, Loader2, ChevronDown, ChevronUp, Trophy, Crown, Sparkles, Target, Gift } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { XpService } from '@/services/xpService'
+import { StreakService } from '@/services/streakService'
 
 export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
@@ -27,6 +29,7 @@ export default function SessionSummary() {
   const [noteSaved, setNoteSaved] = useState(false)
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
   const [xpDisplayed, setXpDisplayed] = useState(0)
+  const [showConfetti, setShowConfetti] = useState(true)
   const xpAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const { summary, loading: summaryLoading, generateSummary, formatVolume, getIntensityEmoji } = useSessionSummary({
@@ -132,15 +135,14 @@ export default function SessionSummary() {
   const currentXp = profile?.xp_total || 0
   const previewXp = summary?.xp.total || 0
   const projectedXp = currentXp + previewXp
-  const currentLevel = XpService.calculateLevelFromXp(currentXp)
+  const currentProgress = XpService.getLevelProgress(currentXp)
+  const projectedProgress = XpService.getLevelProgress(projectedXp)
+  const currentLevel = currentProgress.currentLevel
   const projectedLevel = XpService.calculateLevelFromXp(projectedXp)
-  const currentLevelXp = XpService.getCurrentLevelXp(currentLevel)
-  const nextLevelXp = XpService.getXpForNextLevel(currentLevel)
-  const levelProgress = nextLevelXp > currentLevelXp
-    ? Math.min(100, Math.round(((projectedXp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100))
-    : 100
+  const levelProgress = Math.round(projectedProgress.percentage)
   const levelUpPreview = projectedLevel > currentLevel
-  const streakBonusActive = (summary?.streak.thisWeek || 0) >= 2
+  const streakBonusRate = StreakService.getXpBonusRate(summary?.streak.consecutive || 0)
+  const streakBonusActive = streakBonusRate > 0
 
   if (loading) {
     return (
@@ -161,6 +163,7 @@ export default function SessionSummary() {
 
   return (
     <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-5">
+      <ConfettiEffect trigger={showConfetti && !!summary} onComplete={() => setShowConfetti(false)} />
 
       {summaryLoading ? (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -177,6 +180,16 @@ export default function SessionSummary() {
             <p className="text-xs uppercase tracking-[0.3em] text-accent font-black">Mission accomplie</p>
             <h1 className="text-2xl font-black leading-tight">{quest.title}</h1>
             <p className="text-muted-foreground text-sm">Ta run est prête. Récolte les récompenses.</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <RewardPill label="XP" value={`+${summary.xp.total}`} icon={<Zap className="w-4 h-4" />} />
+            <RewardPill label="Streak" value={`${summary.streak.consecutive}j`} icon={<Flame className="w-4 h-4" />} />
+            <RewardPill
+              label="Quête"
+              value={summary.dailyQuest.isComplete ? `+${summary.dailyQuest.rewardXp}` : `${summary.dailyQuest.percentage}%`}
+              icon={<Target className="w-4 h-4" />}
+            />
           </div>
 
           {/* PRs de la séance */}
@@ -237,7 +250,7 @@ export default function SessionSummary() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Niveau {currentLevel}</span>
-                  <span>{levelUpPreview ? `Niveau ${projectedLevel} débloqué` : `${Math.max(0, nextLevelXp - projectedXp)} XP restants`}</span>
+                  <span>{levelUpPreview ? `Niveau ${projectedLevel} débloqué` : `${projectedProgress.remaining} XP restants`}</span>
                 </div>
                 <Progress value={levelProgress} className="h-2" />
               </div>
@@ -277,11 +290,36 @@ export default function SessionSummary() {
               <div>
                 <p className="text-sm font-bold">Récompense de run</p>
                 <p className="text-xs text-muted-foreground">
-                  {streakBonusActive ? 'Streak actif : bonus prêt pour la prochaine séance' : 'Reviens demain pour activer le bonus de streak'}
+                  {streakBonusActive ? `${summary.streak.consecutive} jours de streak : bonus actif` : 'Reviens demain pour activer le bonus de streak'}
                 </p>
               </div>
             </div>
-            <span className="shrink-0 text-sm font-black text-primary">+10% XP</span>
+            <span className="shrink-0 text-sm font-black text-primary">
+              {streakBonusActive ? `+${Math.round(streakBonusRate * 100)}% XP` : 'À activer'}
+            </span>
+          </div>
+
+          <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Target className="w-5 h-5 text-accent shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold">Quête du jour</p>
+                  <p className="text-xs text-muted-foreground truncate">{summary.dailyQuest.title}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-accent font-black shrink-0">
+                <Gift className="w-4 h-4" />
+                +{summary.dailyQuest.rewardXp} XP
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{summary.dailyQuest.progress}/{summary.dailyQuest.target} {summary.dailyQuest.unit}</span>
+                <span>{summary.dailyQuest.isComplete ? 'Accomplie' : `${summary.dailyQuest.percentage}%`}</span>
+              </div>
+              <Progress value={summary.dailyQuest.percentage} className="h-2" />
+            </div>
           </div>
 
           {/* Exercices — collapsible */}
@@ -387,6 +425,16 @@ function StatReward({ label, value, className }: { label: string; value: number;
     <div className="rounded-xl border border-muted/30 bg-muted/10 p-2 text-center min-w-0">
       <div className={`text-lg font-black ${className}`}>+{value}</div>
       <div className="text-[10px] text-muted-foreground truncate">{label}</div>
+    </div>
+  )
+}
+
+function RewardPill({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-accent/20 bg-muted/10 p-3 text-center min-w-0">
+      <div className="flex justify-center text-accent mb-1">{icon}</div>
+      <div className="text-base font-black text-foreground truncate">{value}</div>
+      <div className="text-[10px] uppercase text-muted-foreground tracking-wide">{label}</div>
     </div>
   )
 }

@@ -70,6 +70,18 @@ export function WorkoutRewardsModal({
             <div className="text-sm text-muted-foreground">Expérience gagnée</div>
           </div>
 
+          {rewards.dailyQuestCompleted && (
+            <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold">Quête du jour accomplie</div>
+                <div className="text-xs text-muted-foreground">{rewards.dailyQuestCompleted.title}</div>
+              </div>
+              <div className="text-lg font-black text-accent">
+                +{rewards.dailyQuestCompleted.bonusXp} XP
+              </div>
+            </div>
+          )}
+
           {/* Stats Gained */}
           {(rewards.gainedStats.force || rewards.gainedStats.endurance || 
             rewards.gainedStats.agilite || rewards.gainedStats.mental) && (

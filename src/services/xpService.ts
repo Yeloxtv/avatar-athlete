@@ -8,14 +8,26 @@ import {
 } from '@/types/rpg'
 import { LEVELS } from '@/data/rpgLevels'
 import { BADGES, BOSSES } from '@/data/rpgBadges'
+import { StreakService } from '@/services/streakService'
 
 export class XpService {
+  static calculateLiveSetXp(reps: number, weight?: number): number {
+    const effortXp = Math.min(10, Math.floor(Math.max(0, reps) / 2));
+    const loadXp = Math.min(12, Math.floor(Math.max(0, weight || 0) / 5));
+    return 10 + effortXp + loadXp;
+  }
+
   static computeSessionRewards(player: PlayerProfile, input: WorkoutSessionInput): RewardResult {
     // 1) Calcul XP globale
     const base = 100 + 5 * input.durationMin;
     const intensityBonus =
       input.intensity === "HIGH" ? 0.2 : input.intensity === "MEDIUM" ? 0.1 : 0;
-    const gainedXpGlobal = Math.round(base * (1 + intensityBonus));
+    const streakBonus = StreakService.getXpBonusRate(player.streakDays);
+    const dailyQuestBonusXp = Math.max(0, input.dailyQuestBonusXp || 0);
+    const gainedXpGlobal = Math.round(base * (1 + intensityBonus + streakBonus)) + dailyQuestBonusXp;
+    const dailyQuestCompleted = dailyQuestBonusXp > 0
+      ? { title: input.dailyQuestTitle || "Quête du jour", bonusXp: dailyQuestBonusXp }
+      : null;
 
     // 2) Répartition stats
     const dist = XpService.getDistribution(input.category);
@@ -39,7 +51,11 @@ export class XpService {
     const messages = XpService.buildMessages(gainedXpGlobal, gainedStats, levelUps, newBadges, bossUnlocked);
 
     // 6) Retour du résultat
-    return { gainedXpGlobal, gainedStats, newBadges, levelUps, bossUnlocked, messages };
+    if (dailyQuestCompleted) {
+      messages.push(`Quête du jour accomplie : +${dailyQuestBonusXp} XP bonus.`);
+    }
+
+    return { gainedXpGlobal, gainedStats, newBadges, levelUps, bossUnlocked, dailyQuestCompleted, messages };
   }
 
   static getDistribution(category: WorkoutCategory) {
@@ -141,6 +157,26 @@ export class XpService {
   static getCurrentLevelXp(currentLevel: number): number {
     const levelConfig = LEVELS.find(l => l.level === currentLevel);
     return levelConfig ? levelConfig.xpToReach : 0;
+  }
+
+  static getLevelProgress(totalXp: number) {
+    const safeTotalXp = Math.max(0, totalXp || 0);
+    const currentLevel = XpService.calculateLevelFromXp(safeTotalXp);
+    const currentLevelXp = XpService.getCurrentLevelXp(currentLevel);
+    const nextLevelXp = XpService.getXpForNextLevel(currentLevel);
+    const xpInCurrentLevel = Math.max(0, safeTotalXp - currentLevelXp);
+    const xpNeededForNext = Math.max(0, nextLevelXp - currentLevelXp);
+    const remaining = Math.max(0, nextLevelXp - safeTotalXp);
+
+    return {
+      currentLevel,
+      currentLevelXp,
+      nextLevelXp,
+      xpInCurrentLevel,
+      xpNeededForNext,
+      remaining,
+      percentage: xpNeededForNext > 0 ? Math.min(100, (xpInCurrentLevel / xpNeededForNext) * 100) : 100,
+    };
   }
 
   static getLevelTitle(level: number): string {

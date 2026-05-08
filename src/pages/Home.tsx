@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useStreak } from '@/hooks/useStreak'
+import { useDailyQuest } from '@/hooks/useDailyQuest'
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift } from 'lucide-react'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -34,11 +36,12 @@ interface PublicCampaign {
 }
 
 export default function Home() {
-  const { profile, calculateLevel, getXpProgress, getXpForNextLevel } = useProfile()
+  const { profile, calculateLevel, getLevelProgress } = useProfile()
+  const { streak } = useStreak(profile?.id)
+  const { dailyQuest } = useDailyQuest(profile?.id)
   const [personalProgram, setPersonalProgram] = useState<PersonalProgram | null>(null)
   const [publicCampaigns, setPublicCampaigns] = useState<PublicCampaign[]>([])
   const [loading, setLoading] = useState(true)
-  const [weekSessions, setWeekSessions] = useState<number[]>([]) // day_of_week des séances cette semaine
   const [activeDayIndex, setActiveDayIndex] = useState(() => {
     const jsDay = new Date().getDay()
     return jsDay === 0 ? 6 : jsDay - 1
@@ -79,28 +82,6 @@ export default function Home() {
       }
 
       // Séances de cette semaine (lundi → dimanche)
-      const now = new Date()
-      const jsDay = now.getDay()
-      const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay
-      const monday = new Date(now)
-      monday.setDate(now.getDate() + mondayOffset)
-      monday.setHours(0, 0, 0, 0)
-
-      const { data: sessionsData } = await supabase
-        .from('workout_sessions')
-        .select('started_at')
-        .eq('user_id', profile.id)
-        .eq('is_completed', true)
-        .gte('started_at', monday.toISOString())
-
-      if (sessionsData) {
-        const days = sessionsData.map(s => {
-          const d = new Date(s.started_at).getDay()
-          return d === 0 ? 6 : d - 1
-        })
-        setWeekSessions([...new Set(days)])
-      }
-
       // Campagnes publiques
       const { data: campaignsData } = await supabase
         .from('campaigns')
@@ -132,10 +113,13 @@ export default function Home() {
   const todayQuest = personalProgram?.quests.find(q => q.day_of_week === activeDayIndex) ?? null
   const xp = profile?.xp_total || 0
   const level = calculateLevel(xp)
-  const xpProgress = getXpProgress(xp)
-  const xpNext = getXpForNextLevel(xp)
-  const xpCurrentLevel = (level - 1) * 200
-  const xpProgressPercent = Math.round((xpProgress / (xpNext - xpCurrentLevel)) * 100)
+  const levelProgress = getLevelProgress(xp)
+  const xpProgressPercent = Math.round(levelProgress.percentage)
+  const streakLabel = streak.completedToday
+    ? `${streak.currentStreak} jour${streak.currentStreak > 1 ? 's' : ''}`
+    : streak.isActive
+      ? `${streak.currentStreak} jour${streak.currentStreak > 1 ? 's' : ''} à sauver`
+      : 'À relancer'
 
   if (loading) {
     return (
@@ -164,7 +148,7 @@ export default function Home() {
         <div className="space-y-1">
           <div className="flex justify-between items-center text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-accent" />{xp} XP</span>
-            <span>Niveau {level + 1} dans {xpNext - xp} XP</span>
+            <span>{levelProgress.remaining > 0 ? `Niveau ${level + 1} dans ${levelProgress.remaining} XP` : 'Niveau max atteint'}</span>
           </div>
           <Progress value={xpProgressPercent} className="h-2" />
         </div>
@@ -174,7 +158,7 @@ export default function Home() {
           <Flame className="w-4 h-4 text-orange-400 shrink-0" />
           <div className="flex gap-1.5 flex-1">
             {DAYS.map((day, i) => {
-              const done = weekSessions.includes(i)
+              const done = streak.weekDays.includes(i)
               const isToday = i === todayIndex
               return (
                 <div key={day} className="flex-1 flex flex-col items-center gap-1">
@@ -188,9 +172,40 @@ export default function Home() {
               )
             })}
           </div>
-          <span className="text-xs font-semibold text-orange-400 shrink-0">{weekSessions.length}/7</span>
+          <span className="text-xs font-semibold text-orange-400 shrink-0">{streakLabel}</span>
         </div>
       </div>
+
+      {/* QUETE QUOTIDIENNE */}
+      <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
+              <Target className="w-5 h-5 text-accent" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-accent uppercase tracking-widest font-black">Quête du jour</p>
+              <h2 className="font-bold text-lg leading-tight">{dailyQuest.title}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{dailyQuest.description}</p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="flex items-center justify-end gap-1 text-accent font-black">
+              <Gift className="w-3.5 h-3.5" />
+              +{dailyQuest.rewardXp}
+            </div>
+            <div className="text-[10px] text-muted-foreground">bonus XP</div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{dailyQuest.progress}/{dailyQuest.target} {dailyQuest.unit}</span>
+            <span>{dailyQuest.isComplete ? 'Accomplie' : `${dailyQuest.percentage}%`}</span>
+          </div>
+          <Progress value={dailyQuest.percentage} className="h-2" />
+        </div>
+      </section>
 
       {/* QUETE DU JOUR */}
       {personalProgram && (

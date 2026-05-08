@@ -908,6 +908,18 @@ export default function StrengthWorkoutInterface({
                 )}
               </div>
 
+              {rewardResults.dailyQuestCompleted && (
+                <div className="rounded-lg border border-accent/30 bg-accent/10 p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold">Quête du jour accomplie</div>
+                    <div className="text-xs text-muted-foreground">{rewardResults.dailyQuestCompleted.title}</div>
+                  </div>
+                  <div className="text-lg font-black text-accent">
+                    +{rewardResults.dailyQuestCompleted.bonusXp} XP
+                  </div>
+                </div>
+              )}
+
               <Button
                 onClick={handleRewardsModalClose}
                 className="w-full bg-accent hover:bg-accent/90"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import type { Database } from '@/integrations/supabase/types'
+import { XpService } from '@/services/xpService'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 import { useAuth } from './useAuth'
@@ -62,17 +63,20 @@ export function useProfile() {
   }
 
   const calculateLevel = (xp: number) => {
-    return 1 + Math.floor(xp / 200)
+    return XpService.calculateLevelFromXp(xp)
   }
 
   const getXpForNextLevel = (xp: number) => {
     const level = calculateLevel(xp)
-    return level * 200
+    return XpService.getXpForNextLevel(level)
   }
 
   const getXpProgress = (xp: number) => {
-    const currentLevelXp = (calculateLevel(xp) - 1) * 200
-    return xp - currentLevelXp
+    return XpService.getLevelProgress(xp).xpInCurrentLevel
+  }
+
+  const getLevelProgress = (xp: number) => {
+    return XpService.getLevelProgress(xp)
   }
 
   return {
@@ -82,6 +86,7 @@ export function useProfile() {
     calculateLevel,
     getXpForNextLevel,
     getXpProgress,
+    getLevelProgress,
     refetch: fetchProfile,
   }
 }

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/lib/supabase'
+import { StreakService } from '@/services/streakService'
+import { DailyQuest, DailyQuestService } from '@/services/dailyQuestService'
 
 interface ExercisePerformance {
   exercise_id: string
@@ -29,6 +31,7 @@ interface SessionSummary {
     total: number
   }
   prs: Array<{ exercise_name: string; weight: number; reps: number }>
+  dailyQuest: DailyQuest
 }
 
 interface UseSessionSummaryProps {
@@ -76,17 +79,39 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
         .order('set_number')
       const sessionLogs = (logs || []) as ExerciseLogRow[]
 
-      // Compter séances cette semaine
-      const oneWeekAgo = new Date()
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-      const { data: weekSessions } = await supabase
+      // Calculer le streak en incluant la session en cours de validation.
+      const { data: completedSessions } = await supabase
         .from('workout_sessions')
-        .select('id')
+        .select('id, started_at, ended_at')
         .eq('user_id', profile.id)
         .eq('is_completed', true)
-        .gte('ended_at', oneWeekAgo.toISOString())
 
-      const thisWeek = (weekSessions?.length || 0) + 1
+      const streakDates = [
+        ...((completedSessions || []).map(s => s.ended_at || s.started_at)),
+        session.ended_at || session.started_at || new Date().toISOString(),
+      ]
+      const streak = StreakService.compute(streakDates)
+      const { start, end } = DailyQuestService.getTodayRange()
+      const todayCompletedSessions = (completedSessions || []).filter(completedSession => {
+        const date = new Date(completedSession.ended_at || completedSession.started_at)
+        return date >= start && date <= end
+      })
+      const todayCompletedSessionIds = todayCompletedSessions.map(completedSession => completedSession.id)
+      let previousTodaySets = 0
+      if (todayCompletedSessionIds.length > 0) {
+        const { count } = await supabase
+          .from('exercise_logs')
+          .select('id', { count: 'exact', head: true })
+          .in('session_id', todayCompletedSessionIds)
+        previousTodaySets = count || 0
+      }
+
+      const { data: xpRows } = await supabase
+        .from('audit_xp')
+        .select('delta_total')
+        .eq('user_id', profile.id)
+        .gte('created_at', start.toISOString())
+        .lte('created_at', end.toISOString())
 
       let exercises: ExercisePerformance[] = []
       let totalVolume = 0
@@ -188,7 +213,7 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
         totalVolume,
         exercises,
         intensity,
-        streak: { consecutive: 1, thisWeek },
+        streak: { consecutive: streak.currentStreak, thisWeek: streak.weekDays.length },
         xp: {
           force: quest.xp_force || 0,
           endurance: quest.xp_endurance || 0,
@@ -197,6 +222,12 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           total: (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
         },
         prs,
+        dailyQuest: DailyQuestService.compute({
+          completedWorkouts: todayCompletedSessions.length + 1,
+          completedSets: previousTodaySets + sessionLogs.length,
+          earnedXp: (xpRows || []).reduce((sum, row) => sum + (row.delta_total || 0), 0)
+            + (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
+        }),
       }
 
       setSummary(sessionSummary)

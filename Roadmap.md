@@ -1,520 +1,445 @@
-  
-**🚀 ROADMAP MVP \- PLAYANDTRAIN**
+# 🎮 RPG Hybride — Nouvelle Roadmap Stratégique
+## Vision Produit
 
-**📊 RÉSUMÉ EXÉCUTIF**
+> "Construire un jeu de progression basé sur le sport."
+> 
+> L’objectif n’est plus de créer une simple app fitness/Hyrox,
+> mais une expérience addictive inspirée de Duolingo, des RPG et des jeux mobiles modernes.
 
-Objectif : Créer une application d'entraînement complète, utilisable par débutants et confirmés, permettant de s'entraîner uniquement avec l'app sans autre support.
+---
 
-Target : MVP production-ready avec monétisation freemium
+# 🧠 Nouveau Positionnement
 
-Différenciation : Gamification poussée (Phase 2\) \+ Système de progression intelligente \+ UX
+## ❌ Ancienne direction
+- App Hyrox / Athlète hybride
+- Tracking sportif + gamification
 
-**🎯 VISION & POSITIONNEMENT**
+## ✅ Nouvelle direction
+- Jeu RPG basé sur le sport
+- Le sport devient le gameplay
+- Focus sur :
+  - dopamine
+  - progression
+  - rétention
+  - sensation de progression
+  - habitude quotidienne
 
-**Vision produit 🎨**
+---
 
-• App d'entraînement complète et autonome  
-• Expérience utilisateur gamifiée unique  
-• Adaptation intelligente au niveau utilisateur  
-• Disponible offline pour utilisation en salle
+# 🎯 Objectif Principal
 
-**Utilisateurs cibles 👥**
+Créer une boucle où :
 
-• Débutants : Besoin de guidance et motivation  
-• Confirmés : Recherche de variété et progression  
-• Tous niveaux : Souhait d'autonomie totale d'entraînement
+> "L’utilisateur ouvre l’app parce qu’il veut progresser dans le jeu."
 
-**Proposition de valeu**r 💎
+et plus seulement :
 
-• Simplicité : Une seule app pour tous les besoins  
-• Adaptation : Suggestions intelligentes basées sur la progression  
-• Motivation : Gamification et suivi de progression  
-• Flexibilité : Création d'entraînements personnalisés
+> "Je dois faire du sport."
 
-**🏗️ ARCHITECTURE FONCTIONNELLE ACTUELLE**
+---
 
-**Fonctionnalités existantes ✅**
+# 🧱 Piliers Produit
 
-• Système d'authentification (Supabase)  
-• Base de données exercices et entraînements  
-• Interface campagnes avec progression  
-• Dashboard admin pour création de contenu  
-• Interface entraînement HIIT(AMRAP, EMOM, Tabata, For Time)  
-• Interface entrainement musculation   
-• Home page avec navigation par onglets  
-• Filtrage par type d'entraînement HIIT
+## 1. 🎮 Game Loop
+Transformer chaque séance en "run RPG".
 
-**Architecture technique 🔧**
+## 2. 📈 Progression
+Donner une sensation constante d’évolution :
+- XP
+- niveaux
+- stats
+- avatar
+- badges
+- transformations
 
-• Frontend : React \+ TypeScript \+ Vite  
-• Backend : Supabase (PostgreSQL)  
-• Styling : Tailwind CSS \+ Shadcn/UI  
-• State : React Hooks \+ React Query  
-• Routing : React Router DOM
+## 3. 🔥 Rétention
+Créer une habitude quotidienne :
+- streak
+- quêtes
+- récompenses
+- progression visible
 
-**📋 ROADMAP DÉTAILLÉE**
+## 4. ✨ Feedback émotionnel
+Chaque action doit être satisfaisante :
+- sons
+- animations
+- feedbacks visuels
+- récompenses
 
-**🔥 PRIORITÉ 1 \- FONCTIONNALITÉS CORE (4-5 semaines)**
+---
 
-**Sprint 1 \- Interface HIIT Améliorée ⚡**
+# ⚡ PHASE 1 — MVP Addictif
+## Objectif :
+Créer la première boucle de dopamine fonctionnelle.
 
-**Objectifs 🎯**  
-Rendre l'interface HIIT parfaitement utilisable pendant l'entraînement sur mobile.
+Durée estimée : 1 à 2 semaines
 
-**Audio Feedback 🔊**
+---
 
-• Bips de transitions : Son de début/fin d'exercice  
-• Compte à rebours vocal : "3, 2, 1, GO\!"  
-• Alertes motivantes : "Dernier round\!", "Mi-temps\!"  
-• Configuration audio : Volume, activation/désactivation
+## ✅ 1. XP temps réel (PRIORITÉ ABSOLUE)
 
-**UX Mobile Optimisée 📱**
+### Fonctionnalités
+- Gain XP à chaque série validée
+- Animation XP (+12 XP)
+- Barre XP qui monte en direct
+- Petit son satisfaisant
+- Vibration mobile légère
 
-• Mode paysage forcé : Rotation automatique pendant l'entraînement  
-• Boutons XXL : Touch targets minimum 44px  
-• Texte géant : Police 24px+ pour lisibilité à distance  
-• Contraste élevé : Visibilité optimale en conditions d'éclairage variable
+### But
+Créer une récompense immédiate après action.
 
-**Animations & Feedback Visuel ✨**
+---
 
-• Barre de progression animée : Temps restant visuel  
-• Transitions fluides : Pas de coupures entre exercices  
-• Feedback haptique : Vibrations sur changement d'exercice (mobile)  
-• Indicateurs d'état : Repos/Effort avec codes couleur
+## ✅ 2. Quêtes du jour
 
-**Mode Focus Entraînement 🎯**
+### Remplacer :
+"Mission du jour"
 
-• Interface épurée : Suppression distractions  
-• Informations essentielles : Exercice actuel, temps, rounds  
-• Navigation simplifiée : Pause/Stop accessibles  
-• Mode sombre forcé : Économie batterie
+### Par :
+"🎯 Quête du jour"
 
-**Critères d'acceptation ✅**  
-• Utilisable sans regarder l'écran grâce à l'audio  
-• Lisible à 2 mètres de distance  
-• Transitions fluides sans interruption  
-• Batterie consommation optimisée
+### Exemples
+- Faire 5 séries
+- Gagner 120 XP
+- Finir une séance
+- Battre un record
 
-**Sprint 1-2 \- Système de Progression Intelligente 📈**
+### Récompenses
+- XP bonus
+- Badge
+- Coffre
+- Bonus temporaire
 
-**Objectifs 🎯**  
-Implémenter le système de suggestions adaptatives basé sur l'historique utilisateur.
+---
 
-**Analyse Performance Passée 📊**
+## ✅ 3. Écran de fin de mission (GAME CHANGER)
 
-• Historique détaillé : Stockage poids/reps par exercice  
-• Calcul tendances : Progression sur 4-8 dernières séances  
-• Détection paliers : Identification stagnation/régression  
-• Scoring performance : Note globale de séance
+### Structure
+- "MISSION ACCOMPLIE"
+- XP gagné
+- Animation level up
+- Stats gagnées
+- Badge débloqué
+- Récompense bonus
 
-**Engine de Suggestions 🤖**
+### But
+Créer LE moment dopamine de l’app.
 
-• Algorithme progression : \+1-2 reps OU \+1-2kg selon contexte  
-• Adaptation contextuelle : Selon fatigue, fréquence, niveau  
-• Suggestions multiples : 3 options (conservateur/modéré/ambitieux)  
-• Apprentissage utilisateur : Mémorisation préférences
+---
 
-**Interface Suggestions 🖥️**
+## ✅ 4. Système de streak
 
-• Popup pré-exercice : Affichage recommandations  
-• Modification facile : Ajustement en un tap  
-• Justification : Explication du "pourquoi" de la suggestion  
-• Historique choix : Suivi acceptation/refus suggestions
+### Fonctionnalités
+- Streak quotidien visible
+- Icône 🔥
+- Bonus XP si streak actif
+- Animation spéciale selon durée
 
-**Machine Learning Basique 🧠**
+### Inspiration
+Duolingo utilise le streak comme principal moteur de rétention.
 
-• Profiling utilisateur : Conservateur/Ambitieux/Équilibré  
-• Adaptation suggestions : Selon acceptation historique  
-• Prédiction performance : Estimation capacité selon contexte  
-• Optimisation continue : Amélioration algorithme
+---
 
-**Critères d'acceptation ✅**
+## ✅ 5. Micro feedbacks UI
 
-• Suggestions pertinentes dans 80%+ des cas  
-• Interface de modification intuitive  
-• Apprentissage visible après 5+ séances  
-• Performance algorithm \< 100ms
+### Ajouter
+- sons validation
+- micro animations
+- feedback boutons
+- transitions fluides
 
-**Sprint 2 \- Récapitulatif & History 📊**
+### Important
+L’app doit sembler "vivante".
 
-**Objectifs 🎯**  
-Créer un système complet de suivi et motivation post-entraînement.
+---
 
-**Récapitulatif de Séance 📋**
+# 🚀 PHASE 2 — STRUCTURE RPG
+## Objectif :
+Donner une vraie sensation de progression RPG.
 
-• Stats immédiates : Temps total, calories, performance  
-• Comparaison : Vs dernière séance similaire  
-• Achievements : Badges/Records battus  
-• Partage : Social media integration (optionnel)
+Durée : 2 à 4 semaines
 
-**Page History Complète 📚**
+---
 
-• Vue calendrier : Séances par jour/semaine/mois  
-• Filtres avancés : Par type, difficulté, durée, performance  
-• Recherche : Par exercice, campagne, date  
-• Export données : CSV pour analyse externe
+## ✅ 1. Avatar évolutif
 
-**Graphiques & Analytics 📈**
+### Progression visuelle
+- Recrue
+- Guerrier
+- Elite
+- Titan
+- etc.
 
-• Courbes progression : Poids/Reps sur 12 semaines  
-• Heat map activité : Fréquence d'entraînement  
-• Répartition types : HIIT vs Musculation vs Campagnes  
-• Tendances : Analyse automatique avec insights
+### Possibilités
+- changement tenue
+- glow
+- armure
+- aura
+- posture
 
-**Système de Motivation 🎉**
+### But
+Créer un attachement émotionnel.
 
-• Messages personnalisés : Selon progression/stagnation  
-• Streaks : Jours consécutifs d'entraînement  
-• Milestones : 10ème séance, 1er mois, etc.  
-• Challenges : Objectifs auto-générés
+---
 
-**Critères d'acceptation ✅**
+## ✅ 2. Stats RPG
 
-• Chargement history \< 2 secondes  
-• Graphiques interactifs et responsives  
-• Export fonctionnel  
-• Messages motivants pertinents
+### Stats principales
+- Force
+- Endurance
+- Agilité
+- Mental
 
-**🔥 PRIORITÉ 2 \- PERSONNALISATION** 
+### Fonctionnement
+Chaque séance influence les stats.
 
-**Sprint 3 \- Profil Utilisateur & Onboarding 👤**
+### Exemple
+- séance jambes → +Force
+- HIIT → +Endurance
 
-**Objectifs 🎯**  
-Créer un système complet de personnalisation pour adapter l'expérience à chaque utilisateur.
+---
 
-**Onboarding Interactif 🚀**
+## ✅ 3. Campagnes RPG
 
-• Questionnaire intelligent : 5-7 questions max  
-• Âge, taille, poids : Informations physiques de base  
-• Niveau : Débutant/intermédiaire/confirmé  
-• Matériel disponible : Poids du corps/haltères/salle complète  
-• Fréquence souhaitée : 2-7 jours/semaine  
-• Objectifs : Perte poids/muscle/endurance/force  
-• Temps disponible : Par séance
+### Exemple
+- "Le Réveil du Guerrier"
+- "Premier Hyrox"
+- "Ascension du Titan"
 
-**Système de Recommandations 🎯**
+### Fonctionnement
+Suite de quêtes avec progression.
 
-• Matching intelligent : Algorithme niveau \+ matériel \+ temps  
-• Campagnes suggérées : Top 3 selon profil  
-• Entraînements recommandés : Rotation automatique  
-• Progression adaptée : Rythme selon fréquence
+---
 
-**Profil Évolutif 🔄**
+## ✅ 4. Missions secondaires
 
-• Mise à jour facile : Modification profil en 2 taps  
-• Réévaluation automatique : Suggestion changement niveau  
-• Adaptation dynamique : Recommandations qui évoluent  
-• Respect limites : Prévention surmenage
+### Exemples
+- Finir en moins de 30 min
+- Faire 100 reps
+- Aucun repos dépassé
 
-**Personnalisation Interface 🎨**
+---
 
-• Préférences affichage : Thème, taille police, unités  
-• Favoris : Entraînements/exercices préférés  
-• Raccourcis : Accès rapide aux habitudes  
-• Notifications : Fréquence et type de rappels
+## ✅ 5. Badges avancés
 
-**Critères d'acceptation ✅**
+### Déjà commencés
+Continuer logique :
+- catégories
+- rareté
+- progression
 
-• Onboarding \< 3 minutes  
-• Recommandations pertinentes dès première utilisation  
-• Modification profil intuitive  
-• Adaptation visible après 1 semaine
+---
 
-**Sprint 3 \- Algorithme de Recommandation 🤖**
+# 🔥 PHASE 3 — RÉTENTION FORTE
+## Objectif :
+Créer une habitude quotidienne.
 
-**Objectifs 🎯**  
-Développer l'intelligence artificielle de l'app pour des recommandations personnalisées.
+Durée : 1 à 2 mois
 
-**Moteur de Recommandation 🧠**
+---
 
-• Scoring complexe : Niveau \+ matériel \+ objectifs \+ historique  
-• Collaborative filtering : "Les utilisateurs comme toi aiment..."  
-• Content-based : Recommandations selon exercices appréciés  
-• Hybrid approach : Combinaison des méthodes
+## ✅ 1. Quêtes quotidiennes / hebdo
 
-**Adaptabilité Temps Réel ⚡**
+### Exemples
+- 3 séances cette semaine
+- 500 XP aujourd’hui
+- 20 séries push
 
-• Feedback immédiat : Ajustement selon like/dislike  
-• Saisonnalité : Suggestions selon période (rentrée, été...)  
-• Fatigue detection : Recommandations plus légères si surmenage  
-• Plateau breaking : Suggestions variées si stagnation
+---
 
-**Machine Learning Pipeline 📊**
+## ✅ 2. Coffres & récompenses
 
-• Data collection : Tracking interactions utilisateur  
-• Feature engineering : Variables prédictives  
-• Model training : Amélioration continue algorithme  
-• A/B testing : Test de nouvelles approches
+### Types
+- coffre bronze
+- argent
+- légendaire
 
-**Critères d'acceptation ✅**
+### Récompenses possibles
+- XP
+- cosmétiques
+- multiplicateurs
+- badges rares
 
-• Recommandations précises dans 85%+ des cas  
-• Temps de calcul \< 500ms  
-• Amélioration mesurable après 100+ utilisateurs  
-• Interface recommandations intuitive
+---
 
-**🔥 PRIORITÉ 3 \- CAMPAGNES & CRÉATION**
+## ✅ 3. Système de récompenses aléatoires
 
-**Sprint 4 \- Gestion Cycles Campagnes 🔄**
+### Exemple
+Après séance :
+- "+10% XP demain"
+- "Double XP sur prochaine run"
 
-**Objectifs 🎯**  
-Transformer les campagnes en vrais programmes sportifs de 6 semaines avec progression.
+---
 
-**Structure Campagne Cyclique 📅**
+## ✅ 4. Classements
 
-• Programme 6 semaines : Structure identique, progression adaptée  
-• Phases progressives : Semaine 1-2 (adaptation), 3-4 (intensification), 5-6 (pic)  
-• Répétition intelligente : Cycle recommence avec niveau supérieur  
-• Validation paliers : Tests avant passage niveau suivant
+### Possibilités
+- amis
+- local
+- global
+- guildes
 
-**Système de Progression Automatique 📈**
+---
 
-• Escalade progressive : \+5-10% charge/intensité par cycle  
-• Adaptation individuelle : Selon performance utilisateur  
-• Détection plafond : Suggestion changement programme si stagnation  
-• Periodization : Alternance volume/intensité
+## ✅ 5. Boss Battles
 
-**Suivi Long Terme 📊**
+### Concept
+Épreuves spéciales :
+- mini Hyrox
+- défi cardio
+- défi force
+- timer
 
-• Performance tracking : Évolution sur plusieurs cycles  
-• Milestone rewards : Badges fin de cycle, records personnels  
-• Progression visuelle : Graphiques évolution force/endurance  
-• Prédiction objectifs : Estimation temps pour atteindre goals
+### But
+Créer des événements mémorables.
 
-**Intelligence Campagne 🧠**
+---
 
-• Auto-adaptation : Modification si performance insuffisante  
-• Suggestion repos : Semaines de récupération automatiques  
-• Variante introduction : Nouveaux exercices pour maintenir intérêt  
-• Graduation system : Passage niveau débutant → intermédiaire → expert
+# 🧠 PHASE 4 — SOCIAL & META GAME
+## Objectif :
+Transformer l’app en écosystème.
 
-**Critères d'acceptation ✅**
+---
 
-• Progression mesurable sur 6 semaines  
-• Adaptation automatique fonctionnelle  
-• Interface cycle claire et motivante  
-• Retention utilisateur \> 80% sur 1 cycle
+## ✅ 1. Guildes / équipes
 
-**Sprint 5 \- Dashboard Création Utilisateur ⚙️**  
-Durée estimée : 1-2 semaines
+### Fonctionnalités
+- progression commune
+- défis
+- boss coop
 
-**Objectifs 🎯**  
-Permettre aux utilisateurs de créer leurs propres entraînements et campagnes personnalisées.
+---
 
-**Interface Création Simplifiée 🎨**
+## ✅ 2. Feed social gamifié
 
-• Wizard 3 étapes : Choix exercices → Paramètres → Prévisualisation  
-• Drag & drop : Organisation exercices intuitive  
-• Templates prêts : Modèles selon objectifs (force, endurance, etc.)  
-• Duplication : Partir d'entraînement existant
+### Inspiration
+Strava + RPG
 
-**Bibliothèque Exercices 📚**
+### Exemples
+- badge débloqué
+- PR battu
+- quête terminée
 
-• Recherche avancée : Par groupe musculaire, matériel, difficulté  
-• Filtres intelligents : Selon profil utilisateur  
-• Prévisualisation : GIF/vidéo pour chaque exercice  
-• Favoris : Exercices préférés utilisateur
+---
 
-**Paramétrage Avancé ⚙️**
+## ✅ 3. Saisons
 
-• Timing flexible : HIIT custom (ex: 45s/15s au lieu de 20s/10s)  
-• Progression intégrée : Augmentation auto semaine après semaine  
-• Variantes : Options selon matériel disponible  
-• Notes personnelles : Commentaires/modifications utilisateur
+### Concept
+- saison 1
+- nouveaux badges
+- nouveaux boss
+- récompenses exclusives
 
-**Partage & Communauté 🌐**
+---
 
-• Export/Import : Partage entraînements via code/lien  
-• Rating system : Note et commentaires sur entraînements  
-• Collection publique : Entraînements communauté  
-• Challenges utilisateur : Défis créés par la communauté
+## ✅ 4. Arbres de compétences
 
-**Critères d'acceptation ✅**
+### Exemples
+- spécialisation force
+- endurance
+- hybride
 
-• Création entraînement \< 5 minutes  
-• Interface intuitive pour débutants  
-• Flexibilité suffisante pour experts  
-• Système partage fonctionnel
+---
 
-**🔥 PRIORITÉ 4 \- FONCTIONNALITÉS AVANCÉES**
+# 🎨 DIRECTION ARTISTIQUE
 
-**Sprint 5-6 \- Mode Hors-ligne & Notifications 📱**
+## Validée actuellement
+- Dark fantasy moderne
+- noir + or + couleurs par catégorie
+- style semi-flat
+- cohérence forte
+- UI mobile lisible
 
-**Objectifs 🎯**  
-Rendre l'app parfaitement utilisable en salle de sport sans réseau.
+---
 
-**Cache Intelligent 💾**
+# 🔊 AUDIO & FEEDBACK (TRÈS IMPORTANT)
 
-• Sync automatique : Téléchargement entraînements favoris  
-• Gestion stockage : Limite cache \+ nettoyage auto  
-• Priorisation : Entraînements probables en priorité  
-• Indicateur offline : Status réseau visible
+## À implémenter progressivement
 
-**Synchronisation Seamless 🔄**
+### Sons
+- validation série
+- XP gagné
+- level up
+- badge unlock
 
-• Queue system : Actions stockées hors-ligne  
-• Conflict resolution : Gestion modifications concurrentes  
-• Background sync : Sync automatique retour réseau  
-• Status feedback : Indicateur synchronisation
+### Animations
+- barre XP
+- glow
+- transitions rapides
+- confetti légers
 
-**Système Notifications Intelligent 🔔**
+---
 
-• Rappels adaptatifs : Selon habitudes utilisateur  
-• Motivation contextuelle : Messages selon performance  
-• Achievements : Notifications records/badges  
-• Social features : Encouragements communauté
+# 📱 PRIORITÉS IMMÉDIATES
 
-**Critères d'acceptation ✅**
+## Ordre conseillé
 
-• Fonctionnement complet hors-ligne  
-• Synchronisation invisible pour l'utilisateur  
-• Notifications pertinentes (pas spam)  
-• Cache \< 50MB par défaut
+### Semaine 1
+- XP live
+- barre progression
+- feedback validation
 
-**Sprint 6 \- Catégories Musculation 💪**
+### Semaine 2
+- écran fin mission
+- streak
+- quête du jour
 
-**Objectifs 🎯**  
-Implémenter le système de filtrage pour les entraînements de musculation.
+### Semaine 3
+- avatar évolutif simple
+- stats RPG
 
-**Système de Catégorisation 🏷️**
+### Semaine 4
+- récompenses
+- coffres
+- badges avancés
 
-• Catégories principales : Haut du corps, Bas du corps, Full body  
-• Sous-catégories : Push/Pull/Legs, Cardio/Force  
-• Tags flexibles : Équipement, niveau, durée  
-• Filtrage combiné : Plusieurs critères simultanés
+---
 
-**Interface Filtrage 🖥️**
+# ⚠️ POINTS DE VIGILANCE
 
-• Filtres visuels : Cards cliquables comme HIIT  
-• Multi-sélection : Plusieurs catégories en même temps  
-• Sauvegarde filtres : Mémorisation préférences  
-• Suggestions : Recommandations selon historique
+## ❌ Ne pas devenir :
+- une app fitness classique
+- une usine à stats
+- un tracker boring
 
-**Critères d'acceptation ✅**
+## ❌ Ne pas surcharger
+La simplicité est clé.
 
-• Filtrage instantané  
-• Interface cohérente avec section HIIT  
-• Mémorisation préférences utilisateur
+## ❌ Ne pas abuser du dark pattern
+La gamification doit rester fun et saine.
 
-**🔥 PRIORITÉ 5 \- POLISH & FINITIONS** 
+---
 
-Sprint 6-7 \- Refacto Technique 🔧
+# 🧠 Inspirations principales
 
-**Objectifs 🎯**  
-Optimiser le code et corriger tous les problèmes techniques pour un MVP stable.
+## Jeux
+- Clash Royale
+- Duolingo
+- Diablo
+- Hades
+- TFT progression systems
 
-**Code Quality 📝**
+## Produits
+- Duolingo
+- Strava
+- Habitica
 
-• ESLint zero warnings : Nettoyage complet code  
-• TypeScript strict : Types complets partout  
-• Performance audit : Optimisation bundle size  
-• Security review : Audit sécurité code
+---
 
-**Testing Strategy 🧪**
+# 🎯 NORTH STAR METRIC
 
-• Unit tests critiques : Fonctions core (progression, recommandations)  
-• Integration tests : Flows utilisateur principaux  
-• E2E tests : Parcours complets  
-• Performance tests : Benchmarks mobile
+## Le vrai objectif :
+Créer une app que les gens ouvrent même
+quand ils n’ont pas envie de faire du sport.
 
-**Mobile Optimization 📱**
+---
 
-• PWA features : Installation, offline, notifications  
-• Performance mobile : \< 3s first load  
-• Battery optimization : Minimiser consommation  
-• Accessibility : Support lecteurs écran
+# 🔥 Résumé Final
 
-**Critères d'acceptation ✅**
+Le projet devient :
 
-• Zero erreurs console  
-• Performance score \> 90 (Lighthouse)  
-• Tests coverage \> 80% fonctions critiques  
-• App installable en PWA
+> "Un RPG de progression personnelle basé sur le sport."
 
-**🎮 PHASE 2 \- GAMIFICATION (Post-MVP)**
+et non plus :
 
-**Vision Gamification 🎯**  
-À développer après validation MVP
-
-**Système de Progression 📈**
-
-• Points d'expérience : XP par séance, multiplicateurs performance  
-• Niveaux utilisateur : Débutant → Guerrier → Champion → Légende  
-• Skills trees : Spécialisation Force/Endurance/Flexibilité/Cardio  
-• Avatar évolutif : Apparence qui change avec progression
-
-**Système de Récompenses 🏆**
-
-• Achievements complexes : 100+ badges variés  
-• Collections : Sets d'équipements, poses, etc.  
-• Unlockables : Nouveaux entraînements/fonctionnalités  
-• Seasonal events : Défis temporaires
-
-**Aspects Sociaux 👥**
-
-• Guilds/Teams : Groupes d'entraide  
-• Leaderboards : Classements par catégorie  
-• Challenges communauté : Défis collectifs  
-• Coaching peer-to-peer : Utilisateurs experts aident débutants
-
-**💰 STRATÉGIE MONÉTISATION**
-
-**Phase MVP \- Free to Play 🆓**
-
-• 100% gratuit : Toutes fonctionnalités accessibles  
-• Validation produit : Prouver la valeur avant monétiser  
-• Community building : Créer base utilisateurs fidèles  
-• Data collection : Comprendre usage et préférences
-
-**Phase Premium \- Freemium Intelligent 💎**
-
-***Tier Gratuit (Forever Free) 🆓***  
-• 2 campagnes par niveau : Débutant, Intermédiaire, Expert  
-• Entraînements one-shot illimités : HIIT et musculation  
-• Création basique : 5 entraînements personnalisés max  
-• Features core : Progression, history, recommendations
-
-***Tier Premium (€9.99/mois) ⭐***  
-• Campagnes illimitées : Accès catalogue complet  
-• Création avancée : Entraînements et campagnes illimités  
-• AI Coach : Recommandations ultra-personnalisées  
-• Analytics avancées : Insights détaillés, export données  
-• Gamification complète : Avatar, achievements, social features  
-• Support prioritaire : Assistance rapide
-
-***Tier Coach (€19.99/mois) 💼***  
-• Outils création pro : Interface avancée pour coachs  
-• Gestion clients : Suivi multiple utilisateurs  
-• Branding personnalisé : Logo, couleurs custom  
-• Analytics business : Metrics engagement clients  
-• Revenue sharing : Commission sur entraînements vendus
-
-**📊 MÉTRIQUES DE SUCCÈS**
-
-**Engagement Utilisateur 📈**
-
-• DAU/MAU ratio : \> 0.3 (utilisateurs actifs daily vs monthly)  
-• Session duration : \> 15 minutes moyenne  
-• Retention rate : \> 70% à 7 jours, \> 40% à 30 jours  
-• Workout completion : \> 80% entraînements terminés
-
-**Progression Utilisateur 🎯**
-
-• Time to first workout : \< 5 minutes après inscription  
-• Workouts per week : \> 2 moyenne utilisateur actif  
-• Profile completion : \> 90% utilisateurs remplissent profil  
-• Custom creation : \> 30% utilisateurs créent contenu perso
-
-**Business Metrics 💰**
-
-• CAC (Customer Acquisition Cost) : \< €10  
-• LTV (Lifetime Value) : \> €100  
-• Conversion free→premium : \> 10% après 3 mois  
-• Churn rate premium : \< 5% mensuel
-
-**Technical Performance ⚡**  
-• App store rating : \> 4.5/5  
-• Crash rate : \< 0.1%  
-• Load time : \< 3 secondes first load  
-• Offline success rate : \> 95% fonctionnalités offline
-
+> "Une application de tracking fitness."

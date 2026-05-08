@@ -31,6 +31,8 @@ export interface WorkoutSessionInput {
   category: WorkoutCategory;
   dateISO: string;               // pour la régularité
   intensity?: "LOW" | "MEDIUM" | "HIGH"; // bonus facultatif
+  dailyQuestBonusXp?: number;
+  dailyQuestTitle?: string;
 }
 
 export interface RewardResult {
@@ -39,6 +41,10 @@ export interface RewardResult {
   newBadges: string[];
   levelUps: LevelUpEvent[];     // peut contenir plusieurs up si gros gain d'XP
   bossUnlocked?: BossTrigger | null;
+  dailyQuestCompleted?: {
+    title: string;
+    bonusXp: number;
+  } | null;
   messages: string[];           // toasts immersifs
 }
 
