@@ -1,6 +1,14 @@
 # MCP config (contains secrets)
 .mcp.json
 
+# Environment variables (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Database backups (may contain sensitive data)
+supabase/db.backup/
+
 # Logs
 logs
 *.log

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
-import { Quest, WorkoutSession } from '@/lib/supabase'
+import { Quest, WorkoutSession } from '@/types/workout'
 import { StreakService } from '@/services/streakService'
 import { DailyQuest, DailyQuestService } from '@/services/dailyQuestService'
 

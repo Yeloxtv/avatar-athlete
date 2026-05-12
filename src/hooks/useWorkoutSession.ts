@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
-import { Quest, WorkoutSession } from '@/lib/supabase'
+import { Quest, WorkoutSession } from '@/types/workout'
 import { toast } from '@/hooks/use-toast'
 
 interface UseWorkoutSessionProps {

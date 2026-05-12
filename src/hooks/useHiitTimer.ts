@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import React from 'react'
-import { Quest } from '@/lib/supabase'
+import { Quest } from '@/types/workout'
 
 interface UseHiitTimerProps {
   quest: Quest | null

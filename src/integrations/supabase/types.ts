@@ -465,7 +465,7 @@ export type Database = {
     }
     Functions: {
       complete_quest: {
-        Args: { p_quest_id: string; p_user_id: string }
+        Args: { p_quest_id: string }
         Returns: Json
       }
       initialize_user_quests: {

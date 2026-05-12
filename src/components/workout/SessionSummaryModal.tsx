@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Quest, WorkoutSession } from '@/lib/supabase'
+import { Quest, WorkoutSession } from '@/types/workout'
 import { Loader2, Clock, TrendingUp, Trophy, Zap, Target, Star } from 'lucide-react'
 
 interface SessionSummaryModalProps {

@@ -190,7 +190,6 @@ export function useQuests({ campaignId, campaignSlug, enabled = true }: UseQuest
     if (!user) return
     try {
       const { data } = await supabase.rpc('complete_quest', {
-        p_user_id: user.id,
         p_quest_id: questId,
       })
       if (data && typeof data === 'object' && 'success' in data) {
