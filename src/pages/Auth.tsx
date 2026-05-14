@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,16 +12,28 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const captchaRef = useRef<HCaptcha>(null)
   const { signUp, signIn } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!captchaToken) {
+      toast({
+        title: "Vérification requise",
+        description: "Veuillez compléter le captcha.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
-      const { error } = isSignUp 
-        ? await signUp(email, password)
-        : await signIn(email, password)
+      const { error } = isSignUp
+        ? await signUp(email, password, captchaToken)
+        : await signIn(email, password, captchaToken)
 
       if (error) {
         toast({
@@ -28,18 +41,23 @@ export default function Auth() {
           description: error.message,
           variant: "destructive",
         })
+        // Reset captcha on error so user can retry
+        captchaRef.current?.resetCaptcha()
+        setCaptchaToken(null)
       } else if (isSignUp) {
         toast({
           title: "Compte créé !",
           description: "Vérifiez votre email pour confirmer votre compte.",
         })
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Erreur",
         description: "Une erreur est survenue",
         variant: "destructive",
       })
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken(null)
     } finally {
       setLoading(false)
     }
@@ -95,10 +113,18 @@ export default function Auth() {
                   minLength={6}
                 />
               </div>
-              <Button 
-                type="submit" 
-                className="w-full" 
-                disabled={loading}
+              <div className="flex justify-center">
+                <HCaptcha
+                  ref={captchaRef}
+                  sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY}
+                  onVerify={(token) => setCaptchaToken(token)}
+                  onExpire={() => setCaptchaToken(null)}
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || !captchaToken}
               >
                 {loading ? 'Chargement...' : (isSignUp ? 'Créer mon compte' : 'Se connecter')}
               </Button>

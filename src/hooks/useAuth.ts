@@ -24,18 +24,20 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, captchaToken: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: { captchaToken },
     })
     return { data, error }
   }
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, captchaToken: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
+      options: { captchaToken },
     })
     return { data, error }
   }
