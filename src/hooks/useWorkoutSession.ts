@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
@@ -27,6 +27,20 @@ export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
   const [roundStartTime, setRoundStartTime] = useState(0)
   const [roundTimes, setRoundTimes] = useState<RoundTime[]>([])
   const [workTime, setWorkTime] = useState(0)
+
+  // Sauvegarde du chrono toutes les 30s pour permettre la reprise
+  const timeRef = useRef(time)
+  timeRef.current = time
+  useEffect(() => {
+    if (!isRunning || !session) return
+    const interval = window.setInterval(async () => {
+      await supabase
+        .from('workout_sessions')
+        .update({ total_time_seconds: timeRef.current })
+        .eq('id', session.id)
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [isRunning, session])
 
   const startWorkout = async () => {
     if (!quest || !profile) {

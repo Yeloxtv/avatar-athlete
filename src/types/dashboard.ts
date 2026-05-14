@@ -57,6 +57,9 @@ export interface Quest {
   
   // 🏋️ Nouveaux champs spécifiques musculation
   sets_count?: number;        // Nombre de séries par défaut
+
+  // 📅 Jour de la semaine (0=Lun, 1=Mar, ... 6=Dim, null=aucun)
+  day_of_week?: number | null;
 }
 
 // ✅ Types étendus

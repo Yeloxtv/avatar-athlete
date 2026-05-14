@@ -127,6 +127,7 @@ export const useQuestManager = () => {
       estimated_duration_minutes: quest.estimated_duration_minutes || 30,
       is_one_shot: Boolean(quest.is_one_shot),
       is_published: Boolean(quest.is_published),
+      day_of_week: quest.day_of_week ?? null,
     };
 
     const exercises = quest.exercises || [];

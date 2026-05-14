@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
@@ -11,7 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { RewardResult } from '@/types/rpg'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
-import { List, Square, CheckSquare, Flame, Clock, X, RefreshCw, Search, Zap } from 'lucide-react'
+
+type StrengthWorkoutReturn = ReturnType<typeof useStrengthWorkout>
+// useStrengthWorkout est importé uniquement pour typer ReturnType — l'instance est gérée dans Training.tsx
+import { List, Square, CheckSquare, Flame, Clock, StopCircle, RefreshCw, Search, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 
@@ -26,6 +29,7 @@ interface StrengthWorkoutInterfaceProps {
   session: WorkoutSession | null
   time: number
   isRunning: boolean
+  strengthWorkout: StrengthWorkoutReturn
   onStart: () => void
   onPause: () => void
   onReset: () => void
@@ -449,6 +453,7 @@ export default function StrengthWorkoutInterface({
   session,
   time,
   isRunning,
+  strengthWorkout,
   onStart,
   onPause,
   onReset,
@@ -459,28 +464,29 @@ export default function StrengthWorkoutInterface({
 
   const [showSummary, setShowSummary] = useState(false)
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null)
+  const [showStopConfirm, setShowStopConfirm] = useState(false)
+  const [isStopping, setIsStopping] = useState(false)
   const [showRewardsModal, setShowRewardsModal] = useState(false)
   const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
   const [showPRFlash, setShowPRFlash] = useState(false)
   const [liveXp, setLiveXp] = useState(0)
   const [lastSetXp, setLastSetXp] = useState<number | null>(null)
 
-  const handleSetCompleted = useCallback((event: { xp: number }) => {
-    setLiveXp(prev => prev + event.xp)
-    setLastSetXp(event.xp)
-    playMicroRewardFeedback()
-
-    window.setTimeout(() => {
-      setLastSetXp(null)
-    }, 900)
-  }, [])
-
-  const strengthWorkout = useStrengthWorkout({
-    exercises: quest?.exercises || [],
-    sessionId: session?.id ?? '',
-    restTimeSeconds: 60,
-    onSetCompleted: handleSetCompleted
-  })
+  // Écouter les nouvelles séries complétées pour le feedback XP live
+  const prevCompletedSets = useRef(strengthWorkout.state.completedSets)
+  useEffect(() => {
+    const prev = prevCompletedSets.current
+    const curr = strengthWorkout.state.completedSets
+    if (curr > prev) {
+      playMicroRewardFeedback()
+      // XP approximatif par série (sera affiné si onSetCompleted passe le vrai XP)
+      const xp = 18
+      setLiveXp(v => v + xp)
+      setLastSetXp(xp)
+      window.setTimeout(() => setLastSetXp(null), 900)
+    }
+    prevCompletedSets.current = curr
+  }, [strengthWorkout.state.completedSets])
 
 
   // Flash PR — 3s puis disparaît
@@ -502,6 +508,28 @@ export default function StrengthWorkoutInterface({
       questTitle: quest?.title,
     })
     setShowSummary(true)
+  }
+
+  const stopAndSave = async () => {
+    if (!session) return
+    setIsStopping(true)
+    try {
+      await supabase
+        .from('workout_sessions')
+        .update({
+          is_completed: true,
+          ended_at: new Date().toISOString(),
+          total_time_seconds: time,
+          rounds_completed: strengthWorkout.state.completedSets,
+        })
+        .eq('id', session.id)
+    } catch {
+      // non bloquant
+    } finally {
+      setIsStopping(false)
+      setShowStopConfirm(false)
+    }
+    onFinishWorkout()
   }
 
   const validateWorkout = async () => {
@@ -678,21 +706,20 @@ export default function StrengthWorkoutInterface({
           <span className="text-sm font-mono tabular-nums">{formatTime(time)}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {!isWorkoutComplete && (
-            <span className="text-xs text-muted-foreground font-medium">
-              Exercice {exerciseNumber}/{exerciseTotal}
-            </span>
-          )}
-        </div>
+        {!isWorkoutComplete && (
+          <span className="text-xs text-muted-foreground font-medium">
+            Exercice {exerciseNumber}/{exerciseTotal}
+          </span>
+        )}
 
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2"
-          onClick={finishWorkout}
+          className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 px-2 gap-1 text-xs font-medium"
+          onClick={() => setShowStopConfirm(true)}
         >
-          <X className="w-4 h-4" />
+          <StopCircle className="w-3.5 h-3.5" />
+          Arrêter
         </Button>
       </div>
 
@@ -749,24 +776,18 @@ export default function StrengthWorkoutInterface({
               />
             </div>
 
-            <div className="relative rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 overflow-hidden">
-              {lastSetXp !== null && (
-                <div className="absolute right-4 top-2 text-accent font-black text-lg animate-bounce">
+            {/* XP live — barre discrète */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3 h-3" />
+                  {state.completedSets}/{totalSetsInWorkout} séries
+                </span>
+                <span className={lastSetXp !== null ? 'text-accent font-bold transition-opacity' : 'opacity-0'}>
                   +{lastSetXp} XP
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-accent" />
-                  <span className="text-sm font-bold">XP live</span>
-                </div>
-                <span className="text-xl font-black text-accent tabular-nums">{liveXp}</span>
+                </span>
               </div>
-              <Progress value={liveXpProgress} className="h-2" />
-              <div className="flex justify-between mt-1.5 text-[11px] text-muted-foreground">
-                <span>{state.completedSets}/{totalSetsInWorkout} séries validées</span>
-                <span>objectif {liveXpTarget} XP</span>
-              </div>
+              <Progress value={liveXpProgress} className="h-1" />
             </div>
 
             {/* Indicateurs de séries */}
@@ -928,6 +949,38 @@ export default function StrengthWorkoutInterface({
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog arrêt séance ─────────────────────────────────────────────── */}
+      <Dialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
+        <DialogContent className="max-w-sm mx-4">
+          <DialogHeader>
+            <DialogTitle>Arrêter la séance ?</DialogTitle>
+            <DialogDescription>
+              {state.completedSets > 0
+                ? `Tes ${state.completedSets} série${state.completedSets > 1 ? 's' : ''} effectuée${state.completedSets > 1 ? 's' : ''} seront sauvegardées.`
+                : 'La séance sera enregistrée même si elle n\'est pas terminée.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={stopAndSave}
+              disabled={isStopping}
+              variant="destructive"
+              className="w-full"
+            >
+              {isStopping ? 'Sauvegarde...' : 'Arrêter et sauvegarder'}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowStopConfirm(false)}
+              disabled={isStopping}
+            >
+              Continuer la séance
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

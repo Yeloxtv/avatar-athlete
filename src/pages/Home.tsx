@@ -111,6 +111,9 @@ export default function Home() {
     }
   }
 
+  const isGuided = profile?.user_mode === 'guided'
+  const isAutonomous = profile?.user_mode === 'autonomous'
+
   const todayQuest = personalProgram?.quests.find(q => q.day_of_week === activeDayIndex) ?? null
   const xp = profile?.xp_total || 0
   const level = calculateLevel(xp)
@@ -212,8 +215,8 @@ export default function Home() {
         </div>
       </Link>
 
-      {/* QUETE QUOTIDIENNE */}
-      <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
+      {/* QUETE QUOTIDIENNE — masquée en mode autonome (en standby) */}
+      {!isAutonomous && <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
@@ -241,10 +244,10 @@ export default function Home() {
           </div>
           <Progress value={dailyQuest.percentage} className="h-2" />
         </div>
-      </section>
+      </section>}
 
-      {/* QUETE DU JOUR */}
-      {personalProgram && (
+      {/* QUETE DU JOUR — visible uniquement en mode autonome */}
+      {!isGuided && personalProgram && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold flex items-center gap-2">
@@ -334,10 +337,10 @@ export default function Home() {
         </section>
       )}
 
-      {/* CRÉER UN PROGRAMME */}
-      {!personalProgram && (
+      {/* CRÉER UN PROGRAMME — masqué en mode guidé */}
+      {!isGuided && !personalProgram && (
         <section>
-          <Link to="/dashboard">
+          <Link to="/my-program">
             <div className="rounded-2xl border border-dashed border-accent/30 p-5 text-center space-y-2 hover:border-accent/60 hover:bg-accent/5 transition-all">
               <div className="text-3xl">⚔️</div>
               <p className="font-semibold">Créer mon programme</p>
@@ -347,21 +350,27 @@ export default function Home() {
         </section>
       )}
 
-      {personalProgram && (
-        <div className="flex justify-end">
-          <Link to="/dashboard" className="text-xs text-muted-foreground flex items-center gap-1 hover:text-accent transition-colors">
-            Modifier mon programme <ChevronRight className="w-3 h-3" />
+      {!isGuided && personalProgram && (
+        <Button asChild variant="outline" className="w-full h-11 border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/60 font-semibold">
+          <Link to="/my-program">
+            <Swords className="w-4 h-4 mr-2" />
+            Modifier mon programme
           </Link>
-        </div>
+        </Button>
       )}
 
-      {/* CAMPAGNES PUBLIQUES */}
-      {publicCampaigns.length > 0 && (
+      {/* CAMPAGNES PUBLIQUES — visible uniquement en mode guidé */}
+      {!isAutonomous && publicCampaigns.length > 0 && (
         <section className="space-y-3">
           <h2 className="font-semibold flex items-center gap-2">
             <MapPin className="w-4 h-4 text-accent" />
-            Explorer
+            {isGuided ? 'Tes campagnes' : 'Explorer'}
           </h2>
+          {isGuided && (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Complète les quêtes dans l'ordre pour progresser et débloquer la suite.
+            </p>
+          )}
 
           <div className="space-y-3">
             {publicCampaigns.map(campaign => {

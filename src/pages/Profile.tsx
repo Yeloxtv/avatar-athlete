@@ -3,8 +3,9 @@ import { useStreak } from '@/hooks/useStreak'
 import { useBadges, BADGES } from '@/hooks/useBadges'
 import { LEVELS } from '@/data/rpgLevels'
 import { Progress } from '@/components/ui/progress'
-import { Zap, Flame, Shield, Wind, Brain, Award, ChevronRight, Dumbbell } from 'lucide-react'
+import { Zap, Flame, Shield, Wind, Brain, Award, ChevronRight, Dumbbell, Settings } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 
 const STAT_CONFIG = [
   { key: 'stat_force',     label: 'Force',     Icon: Dumbbell, color: 'text-stats-force',     bg: 'bg-stats-force',     max: 500 },
@@ -53,7 +54,7 @@ function AvatarDisplay({ level, emoji }: { level: number; emoji: string }) {
 }
 
 export default function Profile() {
-  const { profile, calculateLevel, getLevelProgress } = useProfile()
+  const { profile, calculateLevel, getLevelProgress, updateProfile } = useProfile()
   const { streak } = useStreak(profile?.id)
   const { unlockedIds } = useBadges()
   const unlockedBadges = BADGES.filter(b => unlockedIds.has(b.id))
@@ -64,6 +65,11 @@ export default function Profile() {
         <div className="animate-spin w-8 h-8 border-4 border-accent border-t-transparent rounded-full" />
       </div>
     )
+  }
+
+  const handleModeSwitch = async () => {
+    const newMode = profile.user_mode === 'guided' ? 'autonomous' : 'guided'
+    await updateProfile({ user_mode: newMode })
   }
 
   const xp = profile.xp_total || 0
@@ -206,6 +212,31 @@ export default function Profile() {
           </div>
         )}
       </div>
+
+      {/* MODE ENTRAÎNEMENT */}
+      <div className="space-y-3">
+        <h2 className="font-black text-sm uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <Settings className="w-4 h-4" /> Mode d'entraînement
+        </h2>
+        <div className="rounded-2xl border border-muted/30 bg-muted/5 p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {profile.user_mode === 'guided'
+              ? 'Mode actuel : Guidé — tu suis des campagnes progressives.'
+              : 'Mode actuel : Autonome — tu gères ton propre programme.'}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={handleModeSwitch}
+          >
+            {profile.user_mode === 'guided'
+              ? 'Passer en mode Autonome'
+              : 'Passer en mode Guidé'}
+          </Button>
+        </div>
+      </div>
+
     </div>
   )
 }

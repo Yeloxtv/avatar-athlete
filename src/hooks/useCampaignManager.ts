@@ -38,7 +38,7 @@ export const useCampaignManager = () => {
     }
   };
 
-  const saveCampaign = async (campaign: Campaign, isCreating: boolean) => {
+  const saveCampaign = async (campaign: Campaign, isCreating: boolean, ownerUserId?: string) => {
     if (!campaign.title?.trim()) {
       throw new Error("Le nom de la campagne est requis");
     }
@@ -57,17 +57,26 @@ export const useCampaignManager = () => {
 
     try {
       if (isCreating) {
-        const { error } = await supabase.from("campaigns").insert([payload]);
+        const insertPayload = ownerUserId
+          ? { ...payload, owner_user_id: ownerUserId }
+          : payload
+        const { data: created, error } = await supabase
+          .from("campaigns")
+          .insert([insertPayload])
+          .select('id')
+          .single()
         if (error) throw error;
+        await fetchCampaigns();
+        return created.id as string
       } else {
         const { error } = await supabase
           .from("campaigns")
           .update(payload)
           .eq("id", campaign.id);
         if (error) throw error;
+        await fetchCampaigns();
+        return campaign.id as string
       }
-
-      await fetchCampaigns();
     } catch (error) {
       console.error('[saveCampaign]', error);
       throw error;

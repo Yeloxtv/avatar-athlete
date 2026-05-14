@@ -111,6 +111,37 @@ export const QuestForm: React.FC<QuestFormProps> = ({
             </div>
           </div>
 
+          {/* Sélecteur jour de la semaine */}
+          <div className="space-y-2">
+            <Label>Jour de la semaine</Label>
+            <div className="flex gap-1.5 flex-wrap">
+              {['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map((day, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onChange((prev) => ({ ...prev, day_of_week: prev.day_of_week === i ? null : i }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                    quest.day_of_week === i
+                      ? 'bg-accent text-accent-foreground border-accent'
+                      : 'border-muted/40 text-muted-foreground hover:border-accent/40'
+                  }`}
+                >
+                  {day}
+                </button>
+              ))}
+              {quest.day_of_week != null && (
+                <button
+                  type="button"
+                  onClick={() => onChange((prev) => ({ ...prev, day_of_week: null }))}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-muted/40 text-muted-foreground hover:border-red-400/40"
+                >
+                  Aucun
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Assigne cette séance à un jour pour qu'elle apparaisse dans le planning semaine.</p>
+          </div>
+
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea

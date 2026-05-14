@@ -146,6 +146,7 @@ export type Database = {
           stat_mental: number | null
           updated_at: string
           user_id: string
+          user_mode: 'guided' | 'autonomous' | null
           xp_total: number | null
         }
         Insert: {
@@ -160,6 +161,7 @@ export type Database = {
           stat_mental?: number | null
           updated_at?: string
           user_id: string
+          user_mode?: 'guided' | 'autonomous' | null
           xp_total?: number | null
         }
         Update: {
@@ -174,6 +176,7 @@ export type Database = {
           stat_mental?: number | null
           updated_at?: string
           user_id?: string
+          user_mode?: 'guided' | 'autonomous' | null
           xp_total?: number | null
         }
         Relationships: []

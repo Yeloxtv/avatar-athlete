@@ -47,6 +47,7 @@ const emptyQuest: Quest = {
   estimated_duration_minutes: 30,
   is_one_shot: false,
   is_published: true,
+  day_of_week: null,
 };
 
 const emptyExercise: Exercise = {

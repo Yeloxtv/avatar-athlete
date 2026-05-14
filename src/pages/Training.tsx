@@ -5,6 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/types/workout'
+import { useWorkoutSessionContext } from '@/contexts/WorkoutSessionContext'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -23,6 +24,7 @@ export default function Training() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { startLiveSession, updateLiveSession, clearLiveSession } = useWorkoutSessionContext()
 
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,8 +58,21 @@ export default function Training() {
   const strengthWorkout = useStrengthWorkout({
     exercises: isStrengthWorkout ? (quest?.exercises || []) : [],
     sessionId: workoutSession.session?.id || '',
-    restTimeSeconds: 60
+    restTimeSeconds: 60,
   })
+
+  // Sync la LiveWorkoutBar quand l'état strength est restauré depuis Supabase
+  useEffect(() => {
+    if (!quest || !isStrengthWorkout) return
+    const exercises = quest.exercises ?? []
+    const idx = strengthWorkout.state.currentExerciseIndex
+    updateLiveSession({
+      currentExerciseName: exercises[idx]?.name ?? '',
+      currentExerciseIndex: idx,
+      progressPercentage: strengthWorkout.progressPercentage,
+      totalExercises: exercises.length,
+    })
+  }, [strengthWorkout.state.currentExerciseIndex, strengthWorkout.progressPercentage])
 
   // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
@@ -99,31 +114,59 @@ export default function Training() {
       setQuest(questData)
 
       if (questData.workout_type === 'strength') {
-        // Supprimer sessions incomplètes puis créer une nouvelle propre
-        await supabase
+        // Réutiliser la session incomplète existante si elle existe
+        const { data: existingSession } = await supabase
           .from('workout_sessions')
-          .delete()
+          .select()
           .eq('user_id', profile.id)
           .eq('quest_id', questId)
           .eq('is_completed', false)
-
-        const { data: newSession, error: sessErr } = await supabase
-          .from('workout_sessions')
-          .insert({
-            user_id: profile.id,
-            quest_id: questId,
-            workout_type: 'strength',
-            started_at: new Date().toISOString(),
-            is_completed: false,
-            total_time_seconds: 0,
-            rounds_completed: 0,
-          })
-          .select()
+          .order('started_at', { ascending: false })
+          .limit(1)
           .single()
 
-        if (!sessErr && newSession) {
-          workoutSession.setSession(newSession)
+        if (existingSession) {
+          workoutSession.setSession(existingSession)
+          // Restaurer le chrono depuis la session sauvegardée
+          workoutSession.setTime(existingSession.total_time_seconds ?? 0)
           workoutSession.setIsRunning(true)
+          startLiveSession({
+            sessionId: existingSession.id,
+            questId: questId!,
+            questTitle: questData.title,
+            currentExerciseName: questData.exercises[0]?.name ?? '',
+            currentExerciseIndex: 0,
+            totalExercises: questData.exercises.length,
+            progressPercentage: 0,
+          })
+        } else {
+          const { data: newSession, error: sessErr } = await supabase
+            .from('workout_sessions')
+            .insert({
+              user_id: profile.id,
+              quest_id: questId,
+              workout_type: 'strength',
+              started_at: new Date().toISOString(),
+              is_completed: false,
+              total_time_seconds: 0,
+              rounds_completed: 0,
+            })
+            .select()
+            .single()
+
+          if (!sessErr && newSession) {
+            workoutSession.setSession(newSession)
+            workoutSession.setIsRunning(true)
+            startLiveSession({
+              sessionId: newSession.id,
+              questId: questId!,
+              questTitle: questData.title,
+              currentExerciseName: questData.exercises[0]?.name ?? '',
+              currentExerciseIndex: 0,
+              totalExercises: questData.exercises.length,
+              progressPercentage: 0,
+            })
+          }
         }
       }
     } catch (error) {
@@ -190,8 +233,7 @@ export default function Training() {
       }
     }
     
-    // Naviguer vers la page de récapitulatif
-    console.log('🚀 Navigation vers le récapitulatif...')
+    clearLiveSession()
     navigate(`/training/${questId}/summary`)
   }
 
@@ -242,6 +284,7 @@ export default function Training() {
             session={workoutSession.session}
             time={workoutSession.time}
             isRunning={workoutSession.isRunning}
+            strengthWorkout={strengthWorkout}
             onStart={startWorkout}
             onPause={workoutSession.pauseWorkout}
             onReset={workoutSession.resetWorkout}

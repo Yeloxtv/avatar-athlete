@@ -4,8 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import TabBar from "@/components/layout/TabBar";
+import LiveWorkoutBar from "@/components/layout/LiveWorkoutBar";
+import { WorkoutSessionProvider } from "@/contexts/WorkoutSessionContext";
 import Campaign from "./pages/Campaign";
 import Training from "./pages/Training";
+import Onboarding from "./pages/Onboarding";
 import Dashboard from "./pages/Dashboard";
 import DevXpSandbox from "./pages/DevXpSandbox";
 import Home from "./pages/Home";
@@ -17,18 +20,21 @@ import SessionDetail from "@/pages/SessionDetail";
 import Badges from "@/pages/Badges";
 import Exercises from "@/pages/Exercises";
 import Profile from "@/pages/Profile";
+import MyProgram from "@/pages/MyProgram";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/hooks/useProfile";
 
 const queryClient = new QueryClient();
 
-const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//, /^\/auth/];
+const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//, /^\/auth/, /^\/my-program/];
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
+  const { profile, loading: profileLoading } = useProfile();
   const location = useLocation();
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -41,6 +47,11 @@ function ProtectedLayout() {
 
   if (!user) {
     return <Auth />;
+  }
+
+  // Show onboarding once if user hasn't chosen their mode yet
+  if (profile && profile.user_mode === null) {
+    return <Onboarding />;
   }
 
   const showTabBar = !HIDDEN_TABBAR_PATTERNS.some(p => p.test(location.pathname));
@@ -63,9 +74,11 @@ function ProtectedLayout() {
           <Route path="/badges" element={<Badges />} />
           <Route path="/exercises" element={<Exercises />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/my-program" element={<MyProgram />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
+      {showTabBar && <LiveWorkoutBar />}
       {showTabBar && <TabBar />}
     </>
   );
@@ -77,7 +90,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <ProtectedLayout />
+        <WorkoutSessionProvider>
+          <ProtectedLayout />
+        </WorkoutSessionProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

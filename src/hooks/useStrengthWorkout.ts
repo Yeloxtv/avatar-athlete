@@ -29,6 +29,13 @@ export const useStrengthWorkout = ({
 
   const [exercises, setExercises] = useState<QuestExercise[]>(initialExercises)
 
+  // Sync quand la quête charge après le premier render (initialExercises était vide)
+  useEffect(() => {
+    if (initialExercises.length > 0) {
+      setExercises(initialExercises)
+    }
+  }, [initialExercises.length])
+
   const [state, setState] = useState<StrengthWorkoutState>({
     currentExerciseIndex: 0,
     currentSet: 1,
@@ -47,7 +54,7 @@ export const useStrengthWorkout = ({
 
   const totalSets = currentExercise?.sets_count || 3
   const exerciseRestTime = currentExercise?.rest_seconds || restTimeSeconds
-  const isWorkoutComplete = state.currentExerciseIndex >= exercises.length
+  const isWorkoutComplete = exercises.length > 0 && state.currentExerciseIndex >= exercises.length
 
   const totalSetsInWorkout = exercises.reduce((total, ex) => total + (ex.sets_count || 3), 0)
   const progressPercentage = totalSetsInWorkout > 0
@@ -210,24 +217,67 @@ export const useStrengthWorkout = ({
   }
 
   useEffect(() => {
-    const loadPreviousPerformances = async () => {
+    const loadInitialState = async () => {
       const performances: Record<string, PreviousPerformance | null> = {}
-
       for (const exercise of exercises) {
         const prevPerf = await fetchBestPreviousPerformance(exercise.id)
         performances[exercise.id] = prevPerf ?? null
       }
 
+      // Restaurer la position courante depuis les logs déjà enregistrés pour cette session
+      const { data: existingLogs } = await supabase
+        .from('exercise_logs')
+        .select('exercise_id, set_number')
+        .eq('session_id', sessionId)
+        .order('set_number', { ascending: true })
+
+      let restoredExerciseIndex = 0
+      let restoredSet = 1
+      let restoredCompletedSets = 0
+
+      if (existingLogs && existingLogs.length > 0) {
+        // Reconstruire combien de séries ont été faites par exercice
+        const setsDonePerExercise: Record<string, number> = {}
+        for (const log of existingLogs) {
+          setsDonePerExercise[log.exercise_id] = Math.max(
+            setsDonePerExercise[log.exercise_id] ?? 0,
+            log.set_number
+          )
+        }
+        restoredCompletedSets = existingLogs.length
+
+        // Trouver le premier exercice pas encore terminé
+        for (let i = 0; i < exercises.length; i++) {
+          const ex = exercises[i]
+          const setsDone = setsDonePerExercise[ex.id] ?? 0
+          const totalSetsForEx = ex.sets_count ?? 3
+          if (setsDone < totalSetsForEx) {
+            restoredExerciseIndex = i
+            restoredSet = setsDone + 1
+            break
+          }
+          // Exercice terminé, passer au suivant
+          restoredExerciseIndex = i + 1
+          restoredSet = 1
+        }
+      }
+
       setState(prev => ({
         ...prev,
-        previousPerformances: performances
+        previousPerformances: performances,
+        // Ne restaurer la position que si des logs existent — sinon on garde index 0 / set 1
+        ...(restoredCompletedSets > 0 && {
+          currentExerciseIndex: restoredExerciseIndex,
+          currentSet: restoredSet,
+          completedSets: restoredCompletedSets,
+        }),
       }))
     }
 
-    if (exercises.length > 0 && sessionId) {
-      loadPreviousPerformances()
+    if (exercises.length > 0 && sessionId && sessionId !== '') {
+      loadInitialState()
     }
-  }, [exercises, sessionId])
+  }, [sessionId])
 
   const switchToExercise = useCallback((targetIndex: number) => {
     const current = state.currentExerciseIndex
