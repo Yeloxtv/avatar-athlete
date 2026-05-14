@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { Home, BarChart2, Award, User } from 'lucide-react'
+import { Home, BarChart2, TrendingUp, User } from 'lucide-react'
 
 const tabs = [
   { to: '/', icon: Home, label: 'Accueil' },
   { to: '/statistics', icon: BarChart2, label: 'Séances' },
-  { to: '/badges', icon: Award, label: 'Badges' },
+  { to: '/progress', icon: TrendingUp, label: 'Progrès' },
   { to: '/profile', icon: User, label: 'Profil' },
 ]
 

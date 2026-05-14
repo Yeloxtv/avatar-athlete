@@ -21,6 +21,7 @@ import Badges from "@/pages/Badges";
 import Exercises from "@/pages/Exercises";
 import Profile from "@/pages/Profile";
 import MyProgram from "@/pages/MyProgram";
+import Progress from "@/pages/Progress";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
@@ -75,6 +76,7 @@ function ProtectedLayout() {
           <Route path="/exercises" element={<Exercises />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/my-program" element={<MyProgram />} />
+          <Route path="/progress" element={<Progress />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
