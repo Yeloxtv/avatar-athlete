@@ -8,8 +8,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { LEVELS } from '@/data/rpgLevels'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Swords, Target, Gift } from 'lucide-react'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -38,7 +37,7 @@ interface PublicCampaign {
 }
 
 export default function Home() {
-  const { profile, calculateLevel, getLevelProgress } = useProfile()
+  const { profile } = useProfile()
   const { user } = useAuth()
   const { streak } = useStreak(profile?.id)
   const { dailyQuest } = useDailyQuest(profile?.id)
@@ -117,10 +116,6 @@ export default function Home() {
   const isAutonomous = profile?.user_mode === 'autonomous'
 
   const todayQuest = personalProgram?.quests.find(q => q.day_of_week === activeDayIndex) ?? null
-  const xp = profile?.xp_total || 0
-  const level = calculateLevel(xp)
-  const levelProgress = getLevelProgress(xp)
-  const xpProgressPercent = Math.round(levelProgress.percentage)
   const streakLabel = streak.completedToday
     ? `${streak.currentStreak} jour${streak.currentStreak > 1 ? 's' : ''}`
     : streak.isActive
@@ -139,83 +134,36 @@ export default function Home() {
     <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-6">
 
       {/* WIDGET PROFIL */}
-      <Link to="/profile" className="block">
-        <div className="rounded-2xl border border-accent/20 bg-card/60 p-4 space-y-3 hover:border-accent/40 transition-colors">
-
-          {/* Ligne 1 : avatar + identité + lien */}
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-accent/15 border-2 border-accent/30 flex items-center justify-center text-2xl shrink-0">
-              {profile?.avatar_emoji || '⚔️'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <h1 className="font-black text-lg leading-tight truncate">{profile?.display_name || 'Athlète'}</h1>
-                <span className="text-xs font-bold text-accent shrink-0">Niv. {level}</span>
+      <div className="rounded-2xl border border-accent/20 bg-card/60 p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-accent/15 border-2 border-accent/30 flex items-center justify-center text-2xl shrink-0">
+            {profile?.avatar_emoji || '🏋️'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="font-black text-lg leading-tight truncate">{profile?.display_name || 'Athlète'}</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <div className="flex gap-1 flex-1">
+                {DAYS.map((day, i) => {
+                  const done = streak.weekDays.includes(i)
+                  const isToday = i === todayIndex
+                  return (
+                    <div key={day} className="flex-1 flex flex-col items-center gap-0.5">
+                      <div className={`w-full h-1.5 rounded-full transition-all ${
+                        done ? 'bg-orange-400' : isToday ? 'bg-accent/40' : 'bg-muted/40'
+                      }`} />
+                      <span className={`text-[9px] ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
+                        {day}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
-              <p className="text-xs text-accent/80 font-semibold truncate">
-                {LEVELS.find(l => l.level === level)?.title ?? 'Apprenti Éveillé'}
-              </p>
+              <span className="text-[10px] font-semibold text-orange-400 shrink-0">{streakLabel}</span>
             </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-          </div>
-
-          {/* Barre XP */}
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1"><Zap className="w-2.5 h-2.5 text-accent" />{xp.toLocaleString()} XP</span>
-              <span>{levelProgress.remaining > 0 ? `${levelProgress.remaining} XP → Niv. ${level + 1}` : 'Niveau max'}</span>
-            </div>
-            <Progress value={xpProgressPercent} className="h-1.5" />
-          </div>
-
-          {/* Mini barres stats */}
-          {((profile?.stat_force || 0) + (profile?.stat_endurance || 0) + (profile?.stat_agilite || 0) + (profile?.stat_mental || 0)) > 0 && (
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: 'FOR', value: profile?.stat_force || 0,     bg: 'bg-stats-force' },
-                { label: 'END', value: profile?.stat_endurance || 0, bg: 'bg-stats-endurance' },
-                { label: 'AGI', value: profile?.stat_agilite || 0,   bg: 'bg-stats-agilite' },
-                { label: 'MEN', value: profile?.stat_mental || 0,    bg: 'bg-stats-mental' },
-              ].map(({ label, value, bg }) => (
-                <div key={label} className="space-y-0.5">
-                  <div className="flex justify-between text-[9px] text-muted-foreground">
-                    <span className="font-bold">{label}</span>
-                    <span>{value}</span>
-                  </div>
-                  <div className="h-1 rounded-full bg-muted/30 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${bg}`}
-                      style={{ width: `${Math.min(100, Math.round((value / 500) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Streak semaine */}
-          <div className="flex items-center gap-2 pt-0.5">
-            <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <div className="flex gap-1 flex-1">
-              {DAYS.map((day, i) => {
-                const done = streak.weekDays.includes(i)
-                const isToday = i === todayIndex
-                return (
-                  <div key={day} className="flex-1 flex flex-col items-center gap-0.5">
-                    <div className={`w-full h-1.5 rounded-full transition-all ${
-                      done ? 'bg-orange-400' : isToday ? 'bg-accent/40' : 'bg-muted/40'
-                    }`} />
-                    <span className={`text-[9px] ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
-                      {day}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-            <span className="text-[10px] font-semibold text-orange-400 shrink-0">{streakLabel}</span>
           </div>
         </div>
-      </Link>
+      </div>
 
       {/* QUETE QUOTIDIENNE — masquée en mode autonome (en standby) */}
       {!isAutonomous && <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
@@ -318,8 +266,8 @@ export default function Home() {
                     <div className="font-bold">{Math.max(1, todayQuest.exercises_count * 3)} séries</div>
                   </div>
                   <div className="rounded-xl border border-accent/20 bg-background/40 p-3">
-                    <div className="text-xs text-muted-foreground">Récompense</div>
-                    <div className="font-bold text-accent">~{Math.max(60, todayQuest.exercises_count * 18)} XP</div>
+                    <div className="text-xs text-muted-foreground">Séries</div>
+                    <div className="font-bold text-accent">{Math.max(1, todayQuest.exercises_count * 3)}</div>
                   </div>
                 </div>
                 <Button asChild className="w-full h-11 text-base font-bold">

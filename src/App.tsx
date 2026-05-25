@@ -9,17 +9,13 @@ import { WorkoutSessionProvider } from "@/contexts/WorkoutSessionContext";
 import Campaign from "./pages/Campaign";
 import Training from "./pages/Training";
 import Onboarding from "./pages/Onboarding";
-import Dashboard from "./pages/Dashboard";
-import DevXpSandbox from "./pages/DevXpSandbox";
 import Home from "./pages/Home";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
 import Statistics from "./pages/Statistics";
 import SessionSummary from "@/pages/SessionSummary";
 import SessionDetail from "@/pages/SessionDetail";
-import Badges from "@/pages/Badges";
 import Exercises from "@/pages/Exercises";
-import Profile from "@/pages/Profile";
 import MyProgram from "@/pages/MyProgram";
 import Progress from "@/pages/Progress";
 import Auth from "./pages/Auth";
@@ -67,14 +63,10 @@ function ProtectedLayout() {
           <Route path="/campaign" element={<Campaign />} />
           <Route path="/campaign/:slug?" element={<Campaign />} />
           <Route path="/train/:questId" element={<Training />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/dev-xp-sandbox" element={<DevXpSandbox />} />
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/training/:questId/summary" element={<SessionSummary />} />
           <Route path="/statistics/session/:sessionId" element={<SessionDetail />} />
-          <Route path="/badges" element={<Badges />} />
           <Route path="/exercises" element={<Exercises />} />
-          <Route path="/profile" element={<Profile />} />
           <Route path="/my-program" element={<MyProgram />} />
           <Route path="/progress" element={<Progress />} />
           <Route path="*" element={<NotFound />} />
