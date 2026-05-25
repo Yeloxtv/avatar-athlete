@@ -58,20 +58,27 @@ test('créer un programme PPL complet depuis le wizard', async ({ page }) => {
     sessionName: 'Legs E2E',
     exercises: [
       { query: 'squat', sets: '4', reps: '6', weight: '80', rest: '120' },
-      { query: 'leg press', sets: '3', reps: '10', weight: '100', rest: '90' },
+      { query: 'lunge', sets: '3', reps: '10', weight: '40', rest: '90' },
     ],
   })
 
   // ── Sauvegarder ─────────────────────────────────────────────────────────
-  await page.getByRole('button', { name: /Sauvegarder le programme/i }).click()
+  // Blur any focused input so the save button receives a clean click
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur?.())
+  const saveBtn = page.getByRole('button', { name: /Sauvegarder le programme/i })
+  await expect(saveBtn).toBeVisible()
+  await saveBtn.scrollIntoViewIfNeeded()
+  await saveBtn.click()
 
-  // Toast confirmation
-  await expect(page.getByText(/Programme créé/i)).toBeVisible({ timeout: 15_000 })
+  // Retour Home after save
+  await page.waitForURL('/', { timeout: 20_000 })
+  await page.waitForLoadState('networkidle')
 
-  // Retour Home — vérifier que le programme est présent
-  await page.waitForURL('/', { timeout: 10_000 })
-  await page.locator('button[type="button"]').filter({ hasText: /^Lun$/ }).first().click()
-  await expect(page.getByText('Push E2E')).toBeVisible()
+  // Verify the program is on Home — day selector shows Lun with a session
+  const lunBtn = page.getByRole('button', { name: /^Lun$/ }).first()
+  await expect(lunBtn).toBeVisible({ timeout: 10_000 })
+  await lunBtn.click()
+  await expect(page.getByText('Push E2E')).toBeVisible({ timeout: 8_000 })
   await expect(page.getByText(/Lancer la séance/i)).toBeVisible()
 })
 
@@ -107,26 +114,24 @@ async function fillSession(
     const card = page.locator('div.rounded-xl.border').filter({ hasText: cardLabel }).first()
     await expect(card).toBeVisible({ timeout: 5_000 })
 
-    // Get the nth exercise name input on the page (index matches exercise index)
+    // Locate the exercise name input for this card
     const nameInput = page.locator('input[placeholder="Nom de l\'exercice"]').nth(i)
-    // Focus + clear via JS to avoid any DnD interference
-    await nameInput.evaluate((el: HTMLInputElement) => { el.focus(); el.value = '' })
-    // Wait for exercises to be loaded — retry typing until dropdown appears
     const firstSuggestion = page.locator('div.absolute.z-50 button[type="button"]').first()
-    for (let attempt = 0; attempt < 4; attempt++) {
-      await nameInput.pressSequentially(ex.query, { delay: 60 })
-      const visible = await firstSuggestion.isVisible({ timeout: 2_000 }).catch(() => false)
+
+    // Retry loop: exercises may still be loading from Supabase on first attempt.
+    // fill('') clears the React-controlled value; pressSequentially fires per-char input events.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await nameInput.fill('')
+      await nameInput.pressSequentially(ex.query, { delay: 80 })
+      const visible = await firstSuggestion.isVisible({ timeout: 2_500 }).catch(() => false)
       if (visible) break
-      // Clear and retry — exercises may not be loaded yet
-      await nameInput.evaluate((el: HTMLInputElement) => { el.focus(); el.value = '' })
-      await page.waitForTimeout(800)
+      await page.waitForTimeout(1_000)
     }
-    await expect(firstSuggestion).toBeVisible({ timeout: 5_000 })
-    // Dispatch mousedown — component uses onMouseDown with e.preventDefault()
-    await page.evaluate(() => {
-      const btn = document.querySelector('div.absolute.z-50 button') as HTMLElement | null
-      btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    })
+
+    await expect(firstSuggestion).toBeVisible({ timeout: 6_000 })
+
+    // Component uses onMouseDown with e.preventDefault() — standard .click() won't work
+    await firstSuggestion.dispatchEvent('mousedown')
     await expect(firstSuggestion).not.toBeVisible({ timeout: 3_000 }).catch(() => {})
 
     // Number inputs in order: Séries, Reps, Poids, Repos

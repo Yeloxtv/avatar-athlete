@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { triggerHaptic } from '@/platform/haptics'
 import { playSuccessSound } from '@/platform/sound'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/types/workout'
@@ -85,6 +86,7 @@ export default function StrengthWorkoutInterface({
   onCancelWorkout
 }: StrengthWorkoutInterfaceProps) {
   const { profile } = useProfile()
+  const { user } = useAuth()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
 
   const [showSummary, setShowSummary] = useState(false)
@@ -158,7 +160,7 @@ export default function StrengthWorkoutInterface({
   }
 
   const validateWorkout = async () => {
-    if (!quest || !profile || !session || isProcessingRewards) return
+    if (!quest || !profile || !user || !session || isProcessingRewards) return
 
     try {
       setShowSummary(false)
@@ -178,7 +180,7 @@ export default function StrengthWorkoutInterface({
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
-          user_id: profile.id,
+          user_id: user.id,
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -206,7 +208,7 @@ export default function StrengthWorkoutInterface({
 
       try {
         await supabase.from('audit_xp').insert({
-          user_id: profile.id,
+          user_id: user.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -229,7 +231,7 @@ export default function StrengthWorkoutInterface({
         await supabase
           .from('user_quests')
           .upsert({
-            user_id: profile.id,
+            user_id: user.id,
             quest_id: nextQuest.id,
             status: 'todo',
           }, {

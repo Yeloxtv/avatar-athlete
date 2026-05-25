@@ -52,23 +52,16 @@ test('éditer un programme existant (renommer + ajouter un jour)', async ({ page
   await expect(card).toBeVisible({ timeout: 5_000 })
 
   const nameInput = card.locator('input[placeholder="Nom de l\'exercice"]')
-  await nameInput.click()
-  await nameInput.press('Control+a')
-  await nameInput.press('Backspace')
   const firstSuggestion = page.locator('div.absolute.z-50 button[type="button"]').first()
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await nameInput.fill('')
     await nameInput.pressSequentially('squat', { delay: 80 })
-    const visible = await firstSuggestion.isVisible({ timeout: 3_000 }).catch(() => false)
+    const visible = await firstSuggestion.isVisible({ timeout: 2_500 }).catch(() => false)
     if (visible) break
-    await nameInput.press('Control+a')
-    await nameInput.press('Backspace')
     await page.waitForTimeout(1_000)
   }
-  await expect(firstSuggestion).toBeVisible({ timeout: 5_000 })
-  await page.evaluate(() => {
-    const btn = document.querySelector('div.absolute.z-50 button') as HTMLElement | null
-    btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-  })
+  await expect(firstSuggestion).toBeVisible({ timeout: 6_000 })
+  await firstSuggestion.dispatchEvent('mousedown')
   await expect(firstSuggestion).not.toBeVisible({ timeout: 3_000 }).catch(() => {})
 
   // Remplir les inputs
@@ -81,8 +74,8 @@ test('éditer un programme existant (renommer + ajouter un jour)', async ({ page
   // ── Sauvegarder ─────────────────────────────────────────────────────────
   await page.getByRole('button', { name: /Sauvegarder le programme/i }).click()
 
-  // Toast confirmation mise à jour (peut être "Programme créé" ou "Programme mis à jour" selon l'implémentation)
-  await expect(page.getByText(/Programme (créé|mis à jour)/i)).toBeVisible({ timeout: 15_000 })
+  // Toast confirmation mise à jour
+  await expect(page.getByText(/Programme (créé|mis à jour)/i).first()).toBeVisible({ timeout: 15_000 })
 
   // Retour Home — vérifier que Samedi est maintenant présent
   await page.waitForURL('/', { timeout: 10_000 })

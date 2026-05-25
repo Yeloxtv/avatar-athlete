@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { useStreak } from '@/hooks/useStreak'
 import { useDailyQuest } from '@/hooks/useDailyQuest'
 import { supabase } from '@/integrations/supabase/client'
@@ -38,6 +39,7 @@ interface PublicCampaign {
 
 export default function Home() {
   const { profile, calculateLevel, getLevelProgress } = useProfile()
+  const { user } = useAuth()
   const { streak } = useStreak(profile?.id)
   const { dailyQuest } = useDailyQuest(profile?.id)
   const [personalProgram, setPersonalProgram] = useState<PersonalProgram | null>(null)
@@ -54,17 +56,17 @@ export default function Home() {
   })()
 
   useEffect(() => {
-    if (profile) fetchHomeData()
-  }, [profile])
+    if (profile && user) fetchHomeData()
+  }, [profile, user])
 
   const fetchHomeData = async () => {
-    if (!profile) return
+    if (!profile || !user) return
     try {
-      // Programme perso
+      // Programme perso — use auth UID to match RLS owner_user_id
       const { data: personalData } = await supabase
         .from('campaigns')
         .select(`id, slug, title, quests(id, title, order_index, day_of_week, quest_exercises(id))`)
-        .eq('owner_user_id', profile.id)
+        .eq('owner_user_id', user.id)
         .eq('is_active', true)
         .limit(1)
         .single()

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
 import { toast } from '@/hooks/use-toast'
@@ -16,6 +17,7 @@ interface RoundTime {
 
 export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
   const { profile } = useProfile()
+  const { user } = useAuth()
   
   const [session, setSession] = useState<WorkoutSession | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -41,7 +43,7 @@ export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
   }, [isRunning, session])
 
   const startWorkout = async () => {
-    if (!quest || !profile) {
+    if (!quest || !profile || !user) {
       console.error('❌ Pas de quête ou profil pour démarrer')
       return
     }
@@ -49,14 +51,14 @@ export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
     try {
       console.log('🚀 Démarrage de l\'entraînement...')
       console.log('🔍 Quest workout_type:', quest.workout_type) // Debug
-      
+
       setIsRunning(true)
       setRoundStartTime(0)
 
       const { data: newSession, error } = await supabase
         .from('workout_sessions')
         .insert({
-          user_id: profile.id,
+          user_id: user.id,
           quest_id: quest.id,
           workout_type: quest.workout_type,  // ← AJOUTER cette ligne
           started_at: new Date().toISOString(),

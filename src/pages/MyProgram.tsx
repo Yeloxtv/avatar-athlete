@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { useProgramBuilder, emptyExercise } from '@/hooks/useProgramBuilder'
 import { useProgramPersistence } from '@/hooks/useProgramPersistence'
 import { ExerciseDraft, SessionDraft, FinisherDraft, FinisherExerciseDraft } from '@/types/program'
@@ -639,16 +640,17 @@ function Step3({
 export default function MyProgram() {
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { user } = useAuth()
 
   const builder = useProgramBuilder()
   const persistence = useProgramPersistence()
 
   const [existingCampaignId, setExistingCampaignId] = useState<string | null>(null)
 
-  // Load existing program if any
+  // Load existing program if any — use auth UID so RLS matches owner_user_id
   useEffect(() => {
-    if (!profile?.id) return
-    persistence.loadExistingProgram(profile.id).then(loaded => {
+    if (!user?.id) return
+    persistence.loadExistingProgram(user.id).then(loaded => {
       if (loaded) {
         setExistingCampaignId(loaded.campaignId)
         builder.setProgramName(loaded.programName)
@@ -657,10 +659,10 @@ export default function MyProgram() {
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id])
+  }, [user?.id])
 
   const handleSave = async () => {
-    if (!profile?.id) return
+    if (!user?.id) return
     try {
       await persistence.saveProgram(
         {
@@ -668,7 +670,7 @@ export default function MyProgram() {
           activeDays: builder.activeDays,
           sessions: builder.sessions,
         },
-        profile.id,
+        user.id,
         existingCampaignId
       )
       navigate('/')

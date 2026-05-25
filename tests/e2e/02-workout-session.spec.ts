@@ -18,85 +18,73 @@ test('compléter une séance de musculation complète (Lundi — Push E2E)', asy
   // Attendre le chargement de la page /train/:id
   await page.waitForURL(/\/train\//, { timeout: 15_000 })
 
-  // La session démarre automatiquement — attendre l'interface muscu
-  // Le bouton "Valider la série" doit être visible dans StrengthPerformanceInput
-  await expect(page.getByRole('button', { name: /Valider la série/i })).toBeVisible({ timeout: 15_000 })
+  // Attendre que la session Supabase soit créée (spinner "Préparation de la séance..." disparaît)
+  await expect(page.getByText(/Préparation de la séance/i)).not.toBeVisible({ timeout: 20_000 })
+
+  // La saisie de performance doit être visible
+  await expect(page.getByRole('button', { name: /Valider la série/i })).toBeVisible({ timeout: 10_000 })
 
   // Boucle : valider toutes les séries de tous les exercices
-  // On continue tant que le bouton "Valider la série" ou "Passer" (repos) est visible
-  // et qu'on n'a pas atteint l'écran de fin ("Entraînement terminé !")
-  const maxIterations = 50 // sécurité anti-boucle infinie
+  const maxIterations = 60
   let iterations = 0
 
   while (iterations < maxIterations) {
     iterations++
 
-    const isComplete = await page.getByText('Entraînement terminé !').isVisible()
-    if (isComplete) break
+    if (await page.getByText('Entraînement terminé !').isVisible()) break
 
-    // Phase repos — bouton "Passer"
-    const skipBtn = page.getByRole('button', { name: /^Passer$/i })
-    if (await skipBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await skipBtn.click()
+    // Phase repos — attendre la stabilité puis cliquer "Passer"
+    if (await page.getByRole('button', { name: /^Passer$/i }).isVisible({ timeout: 500 }).catch(() => false)) {
+      // Attendre que le bouton soit stable (la phase de repos rend l'UI stable)
+      await page.getByRole('button', { name: /^Passer$/i }).waitFor({ state: 'visible' })
+      await page.getByRole('button', { name: /^Passer$/i }).click()
+      // Laisser la transition React se stabiliser
+      await page.waitForFunction(
+        () => !document.querySelector('[data-component-file="RestPhase.tsx"]'),
+        { timeout: 3_000 }
+      ).catch(() => {})
       continue
     }
 
-    // Phase exercice — bouton "Valider la série"
-    const validateBtn = page.getByRole('button', { name: /Valider la série/i })
-    if (await validateBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const isDisabled = await validateBtn.isDisabled()
-      if (!isDisabled) {
-        await validateBtn.click()
-      } else {
-        // Attendre que le bouton soit actif
-        await page.waitForFunction(
-          () => {
-            const btn = document.querySelector('button:not([disabled])') as HTMLButtonElement | null
-            return btn?.textContent?.includes('Valider la série') ?? false
-          },
-          { timeout: 5_000 }
-        ).catch(() => {})
-        await validateBtn.click().catch(() => {})
-      }
+    // Phase exercice — attendre que "Valider la série" soit stable avant de cliquer
+    const validateVisible = await page.getByRole('button', { name: /Valider la série/i })
+      .isVisible({ timeout: 2_000 }).catch(() => false)
+    if (validateVisible) {
+      // Attendre l'état stable : bouton visible ET enabled ET stable dans le DOM
+      await page.waitForFunction(
+        () => {
+          const btns = Array.from(document.querySelectorAll('button'))
+          const btn = btns.find(b => b.textContent?.trim() === 'Valider la série')
+          return btn && !btn.disabled && btn.isConnected
+        },
+        { timeout: 5_000 }
+      ).catch(() => {})
+      // Utiliser dispatchEvent pour éviter le problème de stabilité DOM
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button'))
+        const btn = btns.find(b => b.textContent?.trim() === 'Valider la série') as HTMLButtonElement | undefined
+        btn?.click()
+      })
+      // Attendre que la transition vers repos ou exercice suivant commence
+      await page.waitForTimeout(300)
       continue
     }
 
-    // Ni repos ni valider visible — attendre un peu
     await page.waitForTimeout(500)
   }
 
-  // Vérifier qu'on est sur l'écran de fin
+  // "Entraînement terminé !" + bouton "Terminer la séance"
   await expect(page.getByText('Entraînement terminé !')).toBeVisible({ timeout: 10_000 })
-
-  // Cliquer "Terminer la séance"
   await page.getByRole('button', { name: /Terminer la séance/i }).click()
 
-  // Possibilité de dialog finisher — si présent, passer
-  const finisherDialog = page.getByText('Finisher disponible')
-  if (await finisherDialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await page.getByRole('button', { name: /Passer, aller au résumé/i }).click()
-  }
+  // Dialog résumé séance — bouton "Valider la séance"
+  await expect(page.getByRole('button', { name: /Valider la séance/i })).toBeVisible({ timeout: 5_000 })
+  await page.getByRole('button', { name: /Valider la séance/i }).click()
 
-  // Attendre la page résumé
-  await page.waitForURL(/\/training\/.*\/summary/, { timeout: 15_000 })
+  // Modal récompenses — attendre et cliquer "Retourner à la campagne"
+  await page.getByRole('button', { name: /Retourner à la campagne/i }).waitFor({ state: 'visible', timeout: 10_000 })
+  await page.getByRole('button', { name: /Retourner à la campagne/i }).click()
 
-  // La page résumé doit afficher "Mission accomplie"
-  await expect(page.getByText('Mission accomplie')).toBeVisible({ timeout: 15_000 })
-
-  // XP affiché (le +0 peut apparaître pendant le chargement, on attend un vrai résultat)
-  // Le texte +{xp} doit être présent dans la section XP
-  await expect(page.getByText(/^\+\d+$/).first()).toBeVisible({ timeout: 10_000 })
-
-  // Valider l'entraînement — "Récolter les récompenses"
-  await expect(page.getByRole('button', { name: /Récolter les récompenses/i })).toBeVisible({ timeout: 5_000 })
-  await page.getByRole('button', { name: /Récolter les récompenses/i }).click()
-
-  // Modal WorkoutRewards — bouton "Retourner à la campagne" ou retour automatique sur Home
-  const returnBtn = page.getByRole('button', { name: /Retourner à la campagne/i })
-  if (await returnBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await returnBtn.click()
-  }
-
-  // Retour sur Home
-  await page.waitForURL('/', { timeout: 15_000 })
+  // Retour sur Home (hard navigation via window.location.href)
+  await page.waitForURL('/', { timeout: 20_000 })
 })

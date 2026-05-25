@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
@@ -17,6 +18,7 @@ interface UseWorkoutValidationProps {
 
 export function useWorkoutValidation({ quest, session, time, rounds, onNavigate }: UseWorkoutValidationProps) {
   const { profile } = useProfile()
+  const { user } = useAuth()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
   const { unlock, unlockedIds } = useBadges()
   
@@ -25,7 +27,7 @@ export function useWorkoutValidation({ quest, session, time, rounds, onNavigate 
   const [postValidationDest, setPostValidationDest] = useState<string | null>(null)
 
   const validateWorkout = async () => {
-    if (!quest || !profile || !session || isProcessingRewards) return
+    if (!quest || !profile || !user || !session || isProcessingRewards) return
 
     try {
       const { error: sessionError } = await supabase
@@ -43,7 +45,7 @@ export function useWorkoutValidation({ quest, session, time, rounds, onNavigate 
       const { error: questStatusError } = await supabase
         .from('user_quests')
         .upsert({
-          user_id: profile.id,
+          user_id: user.id,
           quest_id: quest.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -69,7 +71,7 @@ export function useWorkoutValidation({ quest, session, time, rounds, onNavigate 
 
       try {
         await supabase.from('audit_xp').insert({
-          user_id: profile.id,
+          user_id: user.id,
           quest_id: quest.id,
           delta_force: quest.xp_force,
           delta_endurance: quest.xp_endurance,
@@ -88,7 +90,7 @@ export function useWorkoutValidation({ quest, session, time, rounds, onNavigate 
 
       if (nextQuest) {
         await supabase.from('user_quests').upsert(
-          { user_id: profile.id, quest_id: nextQuest.id, status: 'available' },
+          { user_id: user.id, quest_id: nextQuest.id, status: 'available' },
           { onConflict: 'user_id,quest_id' }
         )
       }

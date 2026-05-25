@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/types/workout'
 import { useWorkoutSessionContext } from '@/contexts/WorkoutSessionContext'
@@ -24,6 +25,7 @@ export default function Training() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { user } = useAuth()
   const { startLiveSession, updateLiveSession, clearLiveSession } = useWorkoutSessionContext()
 
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
@@ -77,13 +79,13 @@ export default function Training() {
 
   // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
-    if (questId && profile?.id) {
+    if (questId && profile?.id && user?.id) {
       void fetchQuest()
     }
-  }, [questId, profile?.id])
+  }, [questId, profile?.id, user?.id])
 
   const fetchQuest = async () => {
-    if (!questId || !profile?.id) return
+    if (!questId || !profile?.id || !user?.id) return
     try {
       const { data: questRows, error: questError } = await supabase
         .from('quests')
@@ -119,7 +121,7 @@ export default function Training() {
         const { data: existingSession } = await supabase
           .from('workout_sessions')
           .select()
-          .eq('user_id', profile.id)
+          .eq('user_id', user.id)
           .eq('quest_id', questId)
           .eq('is_completed', false)
           .order('started_at', { ascending: false })
@@ -144,7 +146,7 @@ export default function Training() {
           const { data: newSession, error: sessErr } = await supabase
             .from('workout_sessions')
             .insert({
-              user_id: profile.id,
+              user_id: user.id,
               quest_id: questId,
               workout_type: 'strength',
               started_at: new Date().toISOString(),
