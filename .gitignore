@@ -1,10 +1,17 @@
 # MCP config (contains secrets)
 .mcp.json
 
+# Playwright MCP session files
+.playwright-mcp/
+
+# Claude worktrees
+.claude/worktrees/
+
 # Environment variables (contain secrets)
 .env
 .env.local
 .env.*.local
+.env.test
 
 # Database backups (may contain sensitive data)
 supabase/db.backup/
@@ -33,3 +40,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+test-results/

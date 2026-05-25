@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 
@@ -21,9 +20,13 @@ interface Quest {
   db_status?: string;
 }
 
-export const useCampaignView = () => {
-  const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
+interface UseCampaignViewOptions {
+  slug: string | undefined;
+  onNavigateToQuest?: (path: string) => void;
+  onNavigateBack?: () => void;
+}
+
+export const useCampaignView = ({ slug, onNavigateToQuest, onNavigateBack }: UseCampaignViewOptions) => {
   const { user } = useAuth();
 
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
@@ -31,11 +34,11 @@ export const useCampaignView = () => {
   const [loading, setLoading] = useState(true);
 
   const navigateToQuest = (questId: string) => {
-    navigate(`/train/${questId}`);
+    onNavigateToQuest?.(`/train/${questId}`);
   };
 
   const navigateBack = () => {
-    navigate("/");
+    onNavigateBack?.();
   };
 
   const resetCampaign = async () => {

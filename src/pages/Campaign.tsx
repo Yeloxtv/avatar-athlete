@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
@@ -21,7 +21,13 @@ import { LoadingState } from '@/components/campaign/LoadingState';
 import { isQuestAvailable } from '@/utils/campaign';
 
 export default function Campaign() {
-  const { activeCampaign, quests, loading, navigateToQuest, navigateBack, resetCampaign } = useCampaignView();
+  const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const { activeCampaign, quests, loading, navigateToQuest, navigateBack, resetCampaign } = useCampaignView({
+    slug,
+    onNavigateToQuest: (path) => navigate(path),
+    onNavigateBack: () => navigate('/'),
+  });
   const { toast } = useToast();
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [searchParams] = useSearchParams();

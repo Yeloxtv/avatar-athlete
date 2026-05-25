@@ -12,9 +12,10 @@ interface UseWorkoutValidationProps {
   session: WorkoutSession | null
   time: number
   rounds: number
+  onNavigate?: (path: string) => void
 }
 
-export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkoutValidationProps) {
+export function useWorkoutValidation({ quest, session, time, rounds, onNavigate }: UseWorkoutValidationProps) {
   const { profile } = useProfile()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
   const { unlock, unlockedIds } = useBadges()
@@ -259,7 +260,7 @@ export function useWorkoutValidation({ quest, session, time, rounds }: UseWorkou
   const handleRewardsModalClose = () => {
     setShowRewardsModal(false)
     setRewardResults(null)
-    window.location.href = postValidationDest ?? '/'
+    onNavigate?.(postValidationDest ?? '/')
   }
 
   return {

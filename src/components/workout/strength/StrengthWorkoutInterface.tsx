@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { triggerHaptic } from '@/platform/haptics'
+import { playSuccessSound } from '@/platform/sound'
 import { useProfile } from '@/hooks/useProfile'
 import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
@@ -7,16 +9,18 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { RewardResult } from '@/types/rpg'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
 
 type StrengthWorkoutReturn = ReturnType<typeof useStrengthWorkout>
 // useStrengthWorkout est importé uniquement pour typer ReturnType — l'instance est gérée dans Training.tsx
-import { List, Square, CheckSquare, Flame, Clock, StopCircle, RefreshCw, Search, Zap } from 'lucide-react'
+import { Clock, StopCircle, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Input } from '@/components/ui/input'
+import { SeriesDots } from './SeriesDots'
+import { RestPhase } from './RestPhase'
+import { SessionDrawer } from './SessionDrawer'
+import { SubstituteDrawer } from './SubstituteDrawer'
 
 interface SessionSummary {
   rounds: number
@@ -34,6 +38,7 @@ interface StrengthWorkoutInterfaceProps {
   onPause: () => void
   onReset: () => void
   onFinishWorkout: () => void
+  onCancelWorkout: () => void
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -44,405 +49,24 @@ function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-function formatRestTimer(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  if (mins > 0) {
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-  return `0:${secs.toString().padStart(2, '0')}`
-}
-
 function playMicroRewardFeedback() {
-  if (typeof window === 'undefined') return
-
-  navigator.vibrate?.(35)
-
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-    if (!AudioContextClass) return
-
-    const audioContext = new AudioContextClass()
-    const oscillator = audioContext.createOscillator()
-    const gain = audioContext.createGain()
-
-    oscillator.type = 'sine'
-    oscillator.frequency.setValueAtTime(660, audioContext.currentTime)
-    oscillator.frequency.exponentialRampToValueAtTime(990, audioContext.currentTime + 0.08)
-    gain.gain.setValueAtTime(0.0001, audioContext.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.14)
-
-    oscillator.connect(gain)
-    gain.connect(audioContext.destination)
-    oscillator.start()
-    oscillator.stop(audioContext.currentTime + 0.15)
-  } catch {
-    // Le feedback audio est un bonus: on ignore les navigateurs qui le bloquent.
-  }
+  triggerHaptic(35)
+  playSuccessSound()
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────
+// ─── Chip helper ────────────────────────────────────────────────────────────
 
-interface SeriesDotsProps {
-  total: number
-  current: number
-  completedLogs: number
-}
-
-function SeriesDots({ total, current, completedLogs }: SeriesDotsProps) {
+function Chip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="flex items-center gap-2 justify-center">
-      {Array.from({ length: total }, (_, i) => {
-        const setNumber = i + 1
-        const isDone = setNumber <= completedLogs
-        const isActive = setNumber === current && !isDone
-
-        return (
-          <div
-            key={i}
-            className={cn(
-              'w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all',
-              isDone && 'bg-accent border-accent text-accent-foreground',
-              isActive && 'border-accent ring-2 ring-accent animate-pulse text-accent',
-              !isDone && !isActive && 'border-muted text-muted-foreground'
-            )}
-          >
-            {isDone ? '✓' : setNumber}
-          </div>
-        )
-      })}
+    <div className={cn(
+      'flex flex-col items-center px-3 py-1.5 rounded-lg border text-center min-w-[64px]',
+      accent
+        ? 'bg-accent/10 border-accent/40 text-accent'
+        : 'bg-muted/20 border-muted/40 text-foreground'
+    )}>
+      <span className="text-base font-bold leading-tight">{value}</span>
+      <span className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">{label}</span>
     </div>
-  )
-}
-
-interface RestPhaseProps {
-  restTimer: number
-  exerciseRestTime: number
-  nextLabel: string
-  onSkip: () => void
-  onAdjust: (delta: number) => void
-}
-
-function RestPhase({ restTimer, exerciseRestTime, nextLabel, onSkip, onAdjust }: RestPhaseProps) {
-  const progressValue = exerciseRestTime > 0 ? (restTimer / exerciseRestTime) * 100 : 0
-
-  return (
-    <div className="flex flex-col items-center gap-6 py-6 px-4">
-      <div className="text-center space-y-1">
-        <p className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
-          Récupération
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Prochain : <span className="text-foreground font-medium">{nextLabel}</span>
-        </p>
-      </div>
-
-      <div className="relative flex items-center justify-center w-52 h-52">
-        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 200 200">
-          <circle
-            cx="100"
-            cy="100"
-            r="88"
-            fill="none"
-            stroke="hsl(var(--muted))"
-            strokeWidth="8"
-          />
-          <circle
-            cx="100"
-            cy="100"
-            r="88"
-            fill="none"
-            stroke="hsl(var(--accent))"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeDasharray={`${2 * Math.PI * 88}`}
-            strokeDashoffset={`${2 * Math.PI * 88 * (1 - progressValue / 100)}`}
-            className="transition-all duration-1000"
-          />
-        </svg>
-        <span className="text-6xl font-mono font-bold text-accent tabular-nums">
-          {formatRestTimer(restTimer)}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-16"
-          onClick={() => onAdjust(-30)}
-        >
-          −30s
-        </Button>
-        <Button
-          onClick={onSkip}
-          className="px-6 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
-        >
-          Passer
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-16"
-          onClick={() => onAdjust(30)}
-        >
-          +30s
-        </Button>
-      </div>
-
-      <Progress
-        value={progressValue}
-        className="w-full h-1.5 bg-muted"
-      />
-    </div>
-  )
-}
-
-interface SessionDrawerProps {
-  exercises: QuestExercise[]
-  currentExerciseIndex: number
-  exerciseLogs: Array<{ exercise_id: string }>
-  completedSets: number
-  onSwitchTo: (index: number) => void
-}
-
-function SessionDrawer({
-  exercises,
-  currentExerciseIndex,
-  exerciseLogs,
-  completedSets,
-  onSwitchTo
-}: SessionDrawerProps) {
-  const totalSetsPlanned = exercises.reduce((sum, ex) => sum + ((ex as any).sets_count || 3), 0)
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button className="w-full h-12 gap-2 text-sm font-semibold bg-yellow-400 text-yellow-900 border-0">
-          <List className="w-4 h-4" />
-          Voir la séance
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto pb-safe">
-        <SheetHeader className="mb-4">
-          <SheetTitle className="text-base">Programme de la séance</SheetTitle>
-        </SheetHeader>
-
-        <div className="space-y-2">
-          {exercises.map((exercise, index) => {
-            const targetSets = (exercise as any).sets_count || 3
-            const done = exerciseLogs.filter(l => l.exercise_id === exercise.id).length
-            const isCompleted = done >= targetSets || index < currentExerciseIndex
-            const isActive = index === currentExerciseIndex
-            const isUpcoming = !isCompleted && !isActive
-
-            return (
-              <div
-                key={`${exercise.id}-${index}`}
-                className={cn(
-                  'flex items-center justify-between gap-3 p-3 rounded-lg border transition-colors',
-                  isCompleted && 'border-green-500/30 bg-green-500/5',
-                  isActive && 'border-accent/50 bg-accent/10',
-                  isUpcoming && 'border-muted bg-muted/10'
-                )}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 text-base">
-                    {isCompleted
-                      ? <CheckSquare className="w-4 h-4 text-green-500" />
-                      : isActive
-                        ? <Flame className="w-4 h-4 text-accent" />
-                        : <Square className="w-4 h-4 text-muted-foreground" />
-                    }
-                  </span>
-                  <div className="min-w-0">
-                    <p className={cn(
-                      'text-sm font-medium truncate',
-                      isCompleted && 'text-green-500',
-                      isActive && 'text-accent',
-                      isUpcoming && 'text-muted-foreground'
-                    )}>
-                      {exercise.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {done}/{targetSets} séries
-                      {(exercise as any).target_reps ? ` · ${(exercise as any).target_reps} reps` : ''}
-                    </p>
-                  </div>
-                </div>
-
-                {isUpcoming && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 text-xs h-7 px-2"
-                    onClick={() => onSwitchTo(index)}
-                  >
-                    Faire maintenant
-                  </Button>
-                )}
-                {isActive && (
-                  <span className="shrink-0 text-xs text-accent font-medium">En cours</span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="mt-4 p-3 bg-muted/20 rounded-lg border border-muted/30">
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div>
-              <p className="text-lg font-bold text-accent">{completedSets}</p>
-              <p className="text-xs text-muted-foreground">Séries faites</p>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-foreground">{totalSetsPlanned}</p>
-              <p className="text-xs text-muted-foreground">Séries prévues</p>
-            </div>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-// ─── Substitute Drawer ────────────────────────────────────────────────────
-
-interface GlobalExercise {
-  id: string
-  name: string
-  name_fr: string | null
-  muscle_group: string
-  equipment: string
-  level: string
-}
-
-const EQUIPMENT_FR: Record<string, string> = {
-  barbell: 'Barre', dumbbell: 'Haltères', cable: 'Poulie', machine: 'Machine',
-  bodyweight: 'Poids corps', bands: 'Élastiques', kettlebell: 'Kettlebell', other: 'Autre',
-}
-
-const EQUIPMENT_COLORS: Record<string, string> = {
-  barbell: 'bg-orange-500/20 text-orange-400',
-  dumbbell: 'bg-blue-500/20 text-blue-400',
-  cable: 'bg-purple-500/20 text-purple-400',
-  machine: 'bg-cyan-500/20 text-cyan-400',
-  bodyweight: 'bg-emerald-500/20 text-emerald-400',
-  bands: 'bg-pink-500/20 text-pink-400',
-  kettlebell: 'bg-amber-500/20 text-amber-400',
-  other: 'bg-muted/40 text-muted-foreground',
-}
-
-interface SubstituteDrawerProps {
-  currentExerciseName: string
-  muscleGroup: string | null
-  onSubstitute: (id: string, name: string, muscleGroup: string) => void
-}
-
-function SubstituteDrawer({ currentExerciseName, muscleGroup, onSubstitute }: SubstituteDrawerProps) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const [exercises, setExercises] = useState<GlobalExercise[]>([])
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    let query = supabase
-      .from('exercises')
-      .select('id, name, name_fr, muscle_group, equipment, level')
-      .order('name')
-    if (muscleGroup) query = (query as any).eq('muscle_group', muscleGroup)
-    ;(query as any).then(({ data }: { data: GlobalExercise[] | null }) => {
-      setExercises(data ?? [])
-      setLoading(false)
-    })
-  }, [open, muscleGroup])
-
-  const q = search.trim().toLowerCase()
-  const filtered = q.length >= 2
-    ? exercises.filter(e =>
-        e.name !== currentExerciseName &&
-        (e.name.toLowerCase().includes(q) || (e.name_fr ?? '').toLowerCase().includes(q))
-      )
-    : exercises.filter(e => e.name !== currentExerciseName)
-
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground gap-1 hover:text-foreground"
-        >
-          <RefreshCw className="w-3 h-3" />
-          Remplacer
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[85vh] flex flex-col pb-safe">
-        <SheetHeader className="mb-3 shrink-0">
-          <SheetTitle className="text-base">Remplacer l'exercice</SheetTitle>
-          <p className="text-xs text-muted-foreground">
-            Remplace <span className="font-medium text-foreground">{currentExerciseName}</span>
-            {muscleGroup ? ` · filtre : ${muscleGroup}` : ''}
-          </p>
-        </SheetHeader>
-
-        <div className="relative shrink-0 mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher..."
-            className="pl-9"
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {loading ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Chargement...</div>
-          ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Aucun résultat</div>
-          ) : (
-            filtered.map(ex => (
-              <button
-                key={ex.id}
-                className="w-full flex items-start justify-between px-3 py-3 rounded-lg hover:bg-muted/20 transition-colors text-left"
-                onClick={() => {
-                  onSubstitute(ex.id, ex.name, ex.muscle_group)
-                  setOpen(false)
-                  setSearch('')
-                }}
-              >
-                <div className="flex-1 min-w-0 pr-2">
-                  <p className="text-sm font-medium truncate">{ex.name}</p>
-                  {ex.name_fr && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{ex.name_fr}</p>
-                  )}
-                </div>
-                <div className="shrink-0 flex flex-col items-end gap-1 pt-0.5">
-                  <span className={cn(
-                    'text-xs px-2 py-0.5 rounded-full font-medium',
-                    ex.level === 'beginner' && 'bg-green-500/20 text-green-400',
-                    ex.level === 'intermediate' && 'bg-yellow-500/20 text-yellow-400',
-                    ex.level === 'expert' && 'bg-red-500/20 text-red-400',
-                  )}>
-                    {ex.level === 'beginner' ? 'Débutant' : ex.level === 'intermediate' ? 'Intermédiaire' : 'Expert'}
-                  </span>
-                  <span className={cn(
-                    'text-xs px-2 py-0.5 rounded-full font-medium',
-                    EQUIPMENT_COLORS[ex.equipment] ?? EQUIPMENT_COLORS.other
-                  )}>
-                    {EQUIPMENT_FR[ex.equipment] ?? ex.equipment}
-                  </span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
   )
 }
 
@@ -457,7 +81,8 @@ export default function StrengthWorkoutInterface({
   onStart,
   onPause,
   onReset,
-  onFinishWorkout
+  onFinishWorkout,
+  onCancelWorkout
 }: StrengthWorkoutInterfaceProps) {
   const { profile } = useProfile()
   const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
@@ -755,6 +380,20 @@ export default function StrengthWorkoutInterface({
               </div>
             </div>
 
+            {/* GIF démonstration */}
+            {(currentExercise as any).gif_url && (
+              <div className="flex justify-center">
+                <div className="w-48 h-48 rounded-xl overflow-hidden bg-muted/20 border border-muted/30">
+                  <img
+                    src={(currentExercise as any).gif_url}
+                    alt={currentExercise.name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Chips de données */}
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <Chip label="Reps" value={String((currentExercise as any).target_reps ?? '—')} />
@@ -980,25 +619,17 @@ export default function StrengthWorkoutInterface({
             >
               Continuer la séance
             </Button>
+            <Button
+              variant="ghost"
+              className="w-full text-destructive/70 hover:text-destructive hover:bg-destructive/10 text-sm"
+              onClick={onCancelWorkout}
+              disabled={isStopping}
+            >
+              Annuler et supprimer la séance
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
-
-// ─── Chip helper ────────────────────────────────────────────────────────────
-
-function Chip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className={cn(
-      'flex flex-col items-center px-3 py-1.5 rounded-lg border text-center min-w-[64px]',
-      accent
-        ? 'bg-accent/10 border-accent/40 text-accent'
-        : 'bg-muted/20 border-muted/40 text-foreground'
-    )}>
-      <span className="text-base font-bold leading-tight">{value}</span>
-      <span className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">{label}</span>
     </div>
   )
 }

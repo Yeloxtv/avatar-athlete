@@ -91,6 +91,57 @@ export type Database = {
         }
         Relationships: []
       }
+      exercises: {
+        Row: {
+          id: string
+          external_id: string | null
+          name: string
+          name_fr: string | null
+          body_part: string | null
+          target_muscle: string
+          secondary_muscles: string[] | null
+          equipment: string | null
+          difficulty: string | null
+          instructions: string[] | null
+          gif_url: string | null
+          image_url: string | null
+          video_url: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          external_id?: string | null
+          name: string
+          name_fr?: string | null
+          body_part?: string | null
+          target_muscle: string
+          secondary_muscles?: string[] | null
+          equipment?: string | null
+          difficulty?: string | null
+          instructions?: string[] | null
+          gif_url?: string | null
+          image_url?: string | null
+          video_url?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          external_id?: string | null
+          name?: string
+          name_fr?: string | null
+          body_part?: string | null
+          target_muscle?: string
+          secondary_muscles?: string[] | null
+          equipment?: string | null
+          difficulty?: string | null
+          instructions?: string[] | null
+          gif_url?: string | null
+          image_url?: string | null
+          video_url?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           created_at: string

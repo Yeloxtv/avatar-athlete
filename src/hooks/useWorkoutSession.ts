@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
@@ -16,7 +15,6 @@ interface RoundTime {
 }
 
 export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
-  const navigate = useNavigate()
   const { profile } = useProfile()
   
   const [session, setSession] = useState<WorkoutSession | null>(null)
@@ -33,7 +31,7 @@ export function useWorkoutSession({ quest }: UseWorkoutSessionProps) {
   timeRef.current = time
   useEffect(() => {
     if (!isRunning || !session) return
-    const interval = window.setInterval(async () => {
+    const interval = setInterval(async () => {
       await supabase
         .from('workout_sessions')
         .update({ total_time_seconds: timeRef.current })

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { playLevelUpSound, playQuestCompleteSound, playStatGainSound } from '@/platform/sound'
 import { useProfile } from '@/hooks/useProfile'
 import { useSessionSummary } from '@/hooks/useSessionSummary'
 import { useWorkoutValidation } from '@/hooks/useWorkoutValidation'
@@ -16,42 +17,6 @@ import { toast } from '@/hooks/use-toast'
 import { XpService } from '@/services/xpService'
 import { StreakService } from '@/services/streakService'
 
-// ─── Sons ──────────────────────────────────────────────────────────────────
-
-function playSound(type: 'levelUp' | 'questComplete' | 'statGain') {
-  if (typeof window === 'undefined') return
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-    if (!AudioContextClass) return
-    const ctx = new AudioContextClass()
-    const gain = ctx.createGain()
-    gain.connect(ctx.destination)
-
-    const notes: number[] = type === 'levelUp'
-      ? [523, 659, 784, 1047]   // Do Mi Sol Do — accord montant triomphant
-      : type === 'questComplete'
-      ? [659, 784, 1047]        // Mi Sol Do
-      : [880, 1047]             // La Do — bref et doux
-
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator()
-      osc.type = type === 'levelUp' ? 'triangle' : 'sine'
-      osc.frequency.value = freq
-      const g = ctx.createGain()
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.12)
-      g.gain.exponentialRampToValueAtTime(type === 'levelUp' ? 0.12 : 0.07, ctx.currentTime + i * 0.12 + 0.02)
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.12 + 0.18)
-      osc.connect(g)
-      g.connect(ctx.destination)
-      osc.start(ctx.currentTime + i * 0.12)
-      osc.stop(ctx.currentTime + i * 0.12 + 0.2)
-    })
-
-    if (type === 'levelUp') navigator.vibrate?.([50, 30, 80])
-  } catch {
-    // ignoré silencieusement
-  }
-}
 
 export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
@@ -83,6 +48,7 @@ export default function SessionSummary() {
     session,
     time: session?.total_time_seconds || 0,
     rounds: session?.rounds_completed || 0,
+    onNavigate: (path) => navigate(path),
   })
 
   useEffect(() => {
@@ -148,10 +114,10 @@ export default function SessionSummary() {
           soundsFiredRef.current = true
           if (isLevelUp) {
             setShowLevelUpBurst(true)
-            playSound('levelUp')
+            playLevelUpSound()
             setTimeout(() => setShowLevelUpBurst(false), 1200)
           } else if (summary.dailyQuest.isComplete) {
-            playSound('questComplete')
+            playQuestCompleteSound()
           }
           setTimeout(() => setStatsVisible(true), 200)
         }
@@ -523,7 +489,7 @@ function StatReward({
     if (!visible || ran.current || value === 0) return
     ran.current = true
     const timer = setTimeout(() => {
-      playSound('statGain')
+      playStatGainSound()
       const steps = 12
       const duration = 400
       let step = 0

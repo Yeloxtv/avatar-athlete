@@ -1,42 +1,37 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
-import { useCampaignManager } from '@/hooks/useCampaignManager'
-import { supabase } from '@/integrations/supabase/client'
+import { useProgramBuilder, emptyExercise } from '@/hooks/useProgramBuilder'
+import { useProgramPersistence } from '@/hooks/useProgramPersistence'
+import { ExerciseDraft, SessionDraft, FinisherDraft, FinisherExerciseDraft } from '@/types/program'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { toast } from '@/hooks/use-toast'
-import { ArrowLeft, ArrowRight, Plus, Trash2, ChevronLeft, ChevronRight, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, ChevronLeft, ChevronRight, Check, GripVertical, Zap, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useState } from 'react'
+import { useGlobalExercises } from '@/hooks/useGlobalExercises'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ExerciseDraft {
-  id?: string
-  name: string
-  sets_count: number
-  target_reps: number
-  target_weight: number | null
-  rest_seconds: number
-}
-
-interface SessionDraft {
-  questId?: string
-  name: string
-  exercises: ExerciseDraft[]
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-
-function emptyExercise(): ExerciseDraft {
-  return { name: '', sets_count: 3, target_reps: 8, target_weight: null, rest_seconds: 90 }
-}
-
-function emptySession(dayIndex: number): SessionDraft {
-  return { name: DAYS[dayIndex], exercises: [emptyExercise()] }
-}
 
 // ─── Step indicators ──────────────────────────────────────────────────────────
 
@@ -160,7 +155,77 @@ function Step2({
   )
 }
 
-// ─── Exercise card ────────────────────────────────────────────────────────────
+// ─── Exercise autocomplete ────────────────────────────────────────────────────
+
+function ExerciseAutocomplete({
+  value,
+  onChange,
+  allExercises,
+}: {
+  value: string
+  onChange: (name: string, globalId: string | null) => void
+  allExercises: ReturnType<typeof useGlobalExercises>['exercises']
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const q = value.trim().toLowerCase()
+  const suggestions = q.length >= 2
+    ? allExercises
+        .filter(e =>
+          e.name.toLowerCase().includes(q) ||
+          (e.name_fr ?? '').toLowerCase().includes(q)
+        )
+        .slice(0, 8)
+    : []
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value, null); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder="Nom de l'exercice"
+        className="h-11 text-base"
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-muted/40 bg-background shadow-lg overflow-hidden">
+          {suggestions.map(ex => (
+            <button
+              key={ex.id}
+              type="button"
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
+              onMouseDown={e => {
+                e.preventDefault()
+                onChange(ex.name, ex.id)
+                setOpen(false)
+              }}
+            >
+              {ex.gif_url && (
+                <img src={ex.gif_url} alt={ex.name} className="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{ex.name}</p>
+                {ex.name_fr && <p className="text-xs text-muted-foreground truncate">{ex.name_fr}</p>}
+              </div>
+              <span className="shrink-0 text-xs text-muted-foreground/60 capitalize ml-auto">{ex.body_part}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Exercise card (sortable) ─────────────────────────────────────────────────
 
 function ExerciseCard({
   exercise,
@@ -168,19 +233,30 @@ function ExerciseCard({
   onChange,
   onRemove,
   canRemove,
+  allExercises,
 }: {
   exercise: ExerciseDraft
   index: number
   onChange: (field: keyof ExerciseDraft, value: string | number | null) => void
   onRemove: () => void
   canRemove: boolean
+  allExercises: ReturnType<typeof useGlobalExercises>['exercises']
 }) {
+  const cardId = exercise.id ?? `ex-${index}`
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+
   return (
-    <div className="rounded-xl border border-muted/40 bg-muted/5 p-4 space-y-3">
+    <div ref={setNodeRef} style={style} className="rounded-xl border border-muted/40 bg-muted/5 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-          Exercice {index + 1}
-        </span>
+        <div className="flex items-center gap-2">
+          <button type="button" {...attributes} {...listeners} className="touch-none text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing">
+            <GripVertical className="w-4 h-4" />
+          </button>
+          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+            Exercice {index + 1}
+          </span>
+        </div>
         {canRemove && (
           <button
             type="button"
@@ -192,11 +268,13 @@ function ExerciseCard({
         )}
       </div>
 
-      <Input
+      <ExerciseAutocomplete
         value={exercise.name}
-        onChange={e => onChange('name', e.target.value)}
-        placeholder="Nom de l'exercice"
-        className="h-11 text-base"
+        allExercises={allExercises}
+        onChange={(name, globalId) => {
+          onChange('name', name)
+          if (globalId !== null) onChange('global_exercise_id', globalId)
+        }}
       />
 
       <div className="grid grid-cols-4 gap-2">
@@ -250,6 +328,12 @@ function ExerciseCard({
 
 // ─── Step 3 — Sessions ────────────────────────────────────────────────────────
 
+const FINISHER_FORMATS: { value: FinisherDraft['format']; label: string; desc: string }[] = [
+  { value: 'amrap', label: 'AMRAP', desc: 'Max rounds' },
+  { value: 'emom', label: 'EMOM', desc: 'Every min' },
+  { value: 'tabata', label: 'Tabata', desc: '20s/10s' },
+]
+
 function Step3({
   activeDays,
   sessions,
@@ -267,6 +351,15 @@ function Step3({
 }) {
   const sortedDays = [...activeDays].sort((a, b) => a - b)
   const [activeDayTab, setActiveDayTab] = useState(sortedDays[0])
+
+  // Load all exercises once for autocomplete
+  const { exercises: allExercises } = useGlobalExercises(true, null)
+
+  // DnD sensors — pointer + touch for mobile
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  )
 
   const session = sessions[activeDayTab]
   if (!session) return null
@@ -290,7 +383,33 @@ function Step3({
     updateSession({ exercises: session.exercises.filter((_, i) => i !== idx) })
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = session.exercises.findIndex((ex, i) => (ex.id ?? `ex-${i}`) === active.id)
+    const newIdx = session.exercises.findIndex((ex, i) => (ex.id ?? `ex-${i}`) === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    updateSession({ exercises: arrayMove(session.exercises, oldIdx, newIdx) })
+  }
+
+  // Finisher helpers
+  const finisher = session.finisher
+  const addFinisher = () => updateSession({
+    finisher: { format: 'amrap', duration_minutes: 10, exercises: [{ name: '', target_reps: 10 }] }
+  })
+  const removeFinisher = () => updateSession({ finisher: null })
+  const updateFinisher = (updates: Partial<FinisherDraft>) => {
+    if (!finisher) return
+    updateSession({ finisher: { ...finisher, ...updates } })
+  }
+  const updateFinisherExercise = (idx: number, field: keyof FinisherExerciseDraft, value: string | number | null) => {
+    if (!finisher) return
+    const newExs = finisher.exercises.map((ex, i) => i === idx ? { ...ex, [field]: value } : ex)
+    updateFinisher({ exercises: newExs })
+  }
+
   const currentTabIdx = sortedDays.indexOf(activeDayTab)
+  const exIds = session.exercises.map((ex, i) => ex.id ?? `ex-${i}`)
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -344,21 +463,26 @@ function Step3({
         />
       </div>
 
-      {/* Exercises */}
+      {/* Exercises with DnD */}
       <div className="px-4 space-y-3">
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
           Exercices ({session.exercises.length})
         </p>
-        {session.exercises.map((ex, idx) => (
-          <ExerciseCard
-            key={idx}
-            exercise={ex}
-            index={idx}
-            onChange={(field, value) => updateExercise(idx, field, value)}
-            onRemove={() => removeExercise(idx)}
-            canRemove={session.exercises.length > 1}
-          />
-        ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={exIds} strategy={verticalListSortingStrategy}>
+            {session.exercises.map((ex, idx) => (
+              <ExerciseCard
+                key={ex.id ?? `ex-${idx}`}
+                exercise={ex}
+                index={idx}
+                onChange={(field, value) => updateExercise(idx, field, value)}
+                onRemove={() => removeExercise(idx)}
+                canRemove={session.exercises.length > 1}
+                allExercises={allExercises}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
       </div>
 
       {/* Add exercise */}
@@ -372,6 +496,125 @@ function Step3({
           <Plus className="w-4 h-4 mr-2" />
           Ajouter un exercice
         </Button>
+      </div>
+
+      {/* Finisher section */}
+      <div className="px-4">
+        {!finisher ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addFinisher}
+            className="w-full h-11 border-dashed border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/5"
+          >
+            <Zap className="w-4 h-4 mr-2" />
+            Ajouter un finisher HIIT
+          </Button>
+        ) : (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-yellow-500" />
+                <span className="text-sm font-bold text-yellow-500">Finisher HIIT</span>
+              </div>
+              <button type="button" onClick={removeFinisher} className="text-muted-foreground/50 hover:text-destructive">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Format picker */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Format</Label>
+              <div className="flex gap-2">
+                {FINISHER_FORMATS.map(f => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => updateFinisher({ format: f.value })}
+                    className={cn(
+                      'flex-1 flex flex-col items-center py-2 rounded-lg border-2 text-xs font-bold transition-all',
+                      finisher.format === f.value
+                        ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500'
+                        : 'border-muted/40 text-muted-foreground'
+                    )}
+                  >
+                    <span>{f.label}</span>
+                    <span className="font-normal opacity-70">{f.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                Durée : {finisher.duration_minutes} min
+              </Label>
+              <div className="flex gap-1.5">
+                {[8, 9, 10, 11, 12].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => updateFinisher({ duration_minutes: m })}
+                    className={cn(
+                      'flex-1 h-9 rounded-lg border-2 text-sm font-bold transition-all',
+                      finisher.duration_minutes === m
+                        ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500'
+                        : 'border-muted/40 text-muted-foreground'
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Finisher exercises */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Exercices du finisher</Label>
+              {finisher.exercises.map((fex, fidx) => (
+                <div key={fidx} className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <ExerciseAutocomplete
+                      value={fex.name}
+                      allExercises={allExercises}
+                      onChange={(name, globalId) => {
+                        updateFinisherExercise(fidx, 'name', name)
+                        if (globalId) updateFinisherExercise(fidx, 'global_exercise_id', globalId)
+                      }}
+                    />
+                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={fex.target_reps}
+                    onChange={e => updateFinisherExercise(fidx, 'target_reps', parseInt(e.target.value) || 1)}
+                    className="w-16 h-11 text-center font-bold px-1"
+                    placeholder="Reps"
+                  />
+                  {finisher.exercises.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => updateFinisher({ exercises: finisher.exercises.filter((_, i) => i !== fidx) })}
+                      className="text-destructive/60 hover:text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => updateFinisher({ exercises: [...finisher.exercises, { name: '', target_reps: 10 }] })}
+                className="text-yellow-500 hover:text-yellow-500 hover:bg-yellow-500/10 w-full"
+              >
+                <Plus className="w-3 h-3 mr-1" /> Ajouter un exercice
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -396,250 +639,45 @@ function Step3({
 export default function MyProgram() {
   const navigate = useNavigate()
   const { profile } = useProfile()
-  const { saveCampaign } = useCampaignManager()
 
-  const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [programName, setProgramName] = useState('')
-  const [activeDays, setActiveDays] = useState<Set<number>>(new Set())
-  const [sessions, setSessions] = useState<Record<number, SessionDraft>>({})
+  const builder = useProgramBuilder()
+  const persistence = useProgramPersistence()
+
   const [existingCampaignId, setExistingCampaignId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [loadingExisting, setLoadingExisting] = useState(true)
 
   // Load existing program if any
   useEffect(() => {
     if (!profile?.id) return
-    const loadProgram = async () => {
-      try {
-        const { data: campaign } = await supabase
-          .from('campaigns')
-          .select(`
-            id, title,
-            quests(
-              id, title, day_of_week,
-              quest_exercises(id, name, sets_count, target_reps, target_weight, rest_seconds, order_index)
-            )
-          `)
-          .eq('owner_user_id', profile.id)
-          .eq('is_active', true)
-          .limit(1)
-          .maybeSingle()
-
-        if (campaign) {
-          setExistingCampaignId(campaign.id)
-          setProgramName(campaign.title)
-
-          const days = new Set<number>()
-          const sessionMap: Record<number, SessionDraft> = {}
-
-          for (const quest of campaign.quests ?? []) {
-            if (quest.day_of_week == null) continue
-            days.add(quest.day_of_week)
-            const exercises: ExerciseDraft[] = (quest.quest_exercises ?? [])
-              .sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0))
-              .map((ex: any) => ({
-                id: ex.id,
-                name: ex.name,
-                sets_count: ex.sets_count ?? 3,
-                target_reps: ex.target_reps ?? 8,
-                target_weight: ex.target_weight ?? null,
-                rest_seconds: ex.rest_seconds ?? 90,
-              }))
-            sessionMap[quest.day_of_week] = {
-              questId: quest.id,
-              name: quest.title,
-              exercises: exercises.length > 0 ? exercises : [emptyExercise()],
-            }
-          }
-
-          setActiveDays(days)
-          setSessions(sessionMap)
-        }
-      } finally {
-        setLoadingExisting(false)
+    persistence.loadExistingProgram(profile.id).then(loaded => {
+      if (loaded) {
+        setExistingCampaignId(loaded.campaignId)
+        builder.setProgramName(loaded.programName)
+        builder.setActiveDays(loaded.activeDays)
+        builder.setSessions(loaded.sessions)
       }
-    }
-    loadProgram()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id])
-
-  const toggleDay = (day: number) => {
-    setActiveDays(prev => {
-      const next = new Set(prev)
-      if (next.has(day)) {
-        next.delete(day)
-        setSessions(s => {
-          const n = { ...s }
-          delete n[day]
-          return n
-        })
-      } else {
-        next.add(day)
-        setSessions(s => ({
-          ...s,
-          [day]: s[day] ?? emptySession(day),
-        }))
-      }
-      return next
-    })
-  }
-
-  const goToStep2 = () => setStep(2)
-
-  const goToStep3 = () => {
-    // Ensure sessions exist for all active days
-    setSessions(prev => {
-      const next = { ...prev }
-      activeDays.forEach(day => {
-        if (!next[day]) next[day] = emptySession(day)
-      })
-      return next
-    })
-    setStep(3)
-  }
 
   const handleSave = async () => {
     if (!profile?.id) return
-    setSaving(true)
     try {
-      let campaignId = existingCampaignId
-
-      if (!campaignId) {
-        // Create new campaign
-        campaignId = await saveCampaign(
-          {
-            title: programName,
-            slug: '',
-            description: '',
-            is_active: true,
-            level_required: 'BEGINNER',
-            equipment_tags: [],
-            estimated_duration_weeks: 12,
-          },
-          true,
-          profile.id
-        )
-      } else {
-        // Update existing campaign title
-        await supabase
-          .from('campaigns')
-          .update({ title: programName })
-          .eq('id', campaignId)
-      }
-
-      const sortedDays = [...activeDays].sort((a, b) => a - b)
-
-      // Delete quests for days that were deactivated (edit mode)
-      if (existingCampaignId) {
-        const { data: existingQuests } = await supabase
-          .from('quests')
-          .select('id, day_of_week')
-          .eq('campaign_id', campaignId)
-
-        const deactivatedQuests = (existingQuests ?? []).filter(
-          q => q.day_of_week != null && !activeDays.has(q.day_of_week)
-        )
-        for (const q of deactivatedQuests) {
-          await supabase.from('quest_exercises').delete().eq('quest_id', q.id)
-          await supabase.from('quests').delete().eq('id', q.id)
-        }
-      }
-
-      // Upsert each session
-      for (let i = 0; i < sortedDays.length; i++) {
-        const day = sortedDays[i]
-        const session = sessions[day]
-        if (!session) continue
-
-        const questPayload = {
-          campaign_id: campaignId,
-          title: session.name || DAYS[day],
-          type: 'quete' as const,
-          workout_type: 'strength' as const,
-          order_index: i + 1,
-          day_of_week: day,
-          xp_force: 30,
-          xp_endurance: 10,
-          xp_agilite: 5,
-          xp_mental: 5,
-          xp_total: 50,
-          is_published: false,
-          is_one_shot: false,
-          level_required: 'BEGINNER' as const,
-          equipment_tags: [],
-          estimated_duration_minutes: Math.max(30, session.exercises.length * 8),
-          rest_seconds: 90,
-          work_seconds: 0,
-          rounds_target: 0,
-          total_minutes: 0,
-        }
-
-        let questId = session.questId
-
-        if (questId) {
-          await supabase.from('quests').update(questPayload).eq('id', questId)
-        } else {
-          const { data: created, error } = await supabase
-            .from('quests')
-            .insert(questPayload)
-            .select('id')
-            .single()
-          if (error) throw error
-          questId = created.id
-        }
-
-        // Sync exercises
-        const validExercises = session.exercises.filter(ex => ex.name.trim())
-
-        // Delete exercises not in the current list
-        const existingIds = validExercises.map(ex => ex.id).filter(Boolean) as string[]
-        if (existingIds.length > 0) {
-          await supabase
-            .from('quest_exercises')
-            .delete()
-            .eq('quest_id', questId)
-            .not('id', 'in', `(${existingIds.join(',')})`)
-        } else {
-          await supabase.from('quest_exercises').delete().eq('quest_id', questId)
-        }
-
-        // Upsert exercises
-        if (validExercises.length > 0) {
-          const exercisePayload = validExercises.map((ex, idx) => ({
-            ...(ex.id ? { id: ex.id } : {}),
-            quest_id: questId,
-            name: ex.name,
-            order_index: idx + 1,
-            sets_count: ex.sets_count,
-            target_reps: ex.target_reps,
-            target_weight: ex.target_weight ?? null,
-            rest_seconds: ex.rest_seconds,
-            notes: null,
-          }))
-          const { error } = await supabase
-            .from('quest_exercises')
-            .upsert(exercisePayload, { onConflict: 'id' })
-          if (error) throw error
-        }
-      }
-
-      toast({
-        title: existingCampaignId ? 'Programme mis à jour !' : 'Programme créé !',
-        description: `${sortedDays.length} séance${sortedDays.length > 1 ? 's' : ''} enregistrée${sortedDays.length > 1 ? 's' : ''}`,
-      })
+      await persistence.saveProgram(
+        {
+          programName: builder.programName,
+          activeDays: builder.activeDays,
+          sessions: builder.sessions,
+        },
+        profile.id,
+        existingCampaignId
+      )
       navigate('/')
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: 'Erreur',
-        description: 'Impossible de sauvegarder le programme.',
-        variant: 'destructive',
-      })
-    } finally {
-      setSaving(false)
+    } catch {
+      // toast already shown inside saveProgram
     }
   }
 
-  if (loadingExisting) {
+  if (persistence.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-accent border-t-transparent rounded-full" />
@@ -653,7 +691,7 @@ export default function MyProgram() {
       <div className="flex items-center gap-3 px-4 pt-4 pb-2">
         <button
           type="button"
-          onClick={() => (step === 1 ? navigate(-1) : setStep((step - 1) as 1 | 2 | 3))}
+          onClick={() => (builder.step === 1 ? navigate(-1) : builder.setStep((builder.step - 1) as 1 | 2 | 3))}
           className="p-2 rounded-lg border border-muted/40 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -663,35 +701,35 @@ export default function MyProgram() {
         </h1>
       </div>
 
-      <StepBar step={step} />
+      <StepBar step={builder.step} />
 
-      {step === 1 && (
+      {builder.step === 1 && (
         <Step1
-          programName={programName}
-          onChange={setProgramName}
-          onNext={goToStep2}
+          programName={builder.programName}
+          onChange={builder.setProgramName}
+          onNext={builder.goToStep2}
         />
       )}
 
-      {step === 2 && (
+      {builder.step === 2 && (
         <Step2
-          activeDays={activeDays}
-          onToggle={toggleDay}
-          onBack={() => setStep(1)}
-          onNext={goToStep3}
+          activeDays={builder.activeDays}
+          onToggle={builder.toggleDay}
+          onBack={() => builder.setStep(1)}
+          onNext={builder.goToStep3}
         />
       )}
 
-      {step === 3 && (
+      {builder.step === 3 && (
         <Step3
-          activeDays={activeDays}
-          sessions={sessions}
+          activeDays={builder.activeDays}
+          sessions={builder.sessions}
           onSessionChange={(day, session) =>
-            setSessions(prev => ({ ...prev, [day]: session }))
+            builder.setSessions(prev => ({ ...prev, [day]: session }))
           }
-          onBack={() => setStep(2)}
+          onBack={() => builder.setStep(2)}
           onSave={handleSave}
-          saving={saving}
+          saving={persistence.saving}
         />
       )}
     </div>

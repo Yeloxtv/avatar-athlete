@@ -29,9 +29,9 @@ export default function Training() {
   const [quest, setQuest] = useState<(Quest & { exercises: QuestExercise[] }) | null>(null)
   const [loading, setLoading] = useState(true)
   const [countdown, setCountdown] = useState(0)
-  
-  // ✨ NOUVEAUX STATES pour le récapitulatif
   const [showSessionSummary, setShowSessionSummary] = useState(false)
+  const [finisherQuestId, setFinisherQuestId] = useState<string | null>(null)
+  const [showFinisherDialog, setShowFinisherDialog] = useState(false)
 
   // Détection du type d'entraînement
   const isStrengthWorkout = quest?.workout_type === 'strength'
@@ -42,7 +42,8 @@ export default function Training() {
     quest,
     session: workoutSession.session,
     time: workoutSession.time,
-    rounds: workoutSession.rounds
+    rounds: workoutSession.rounds,
+    onNavigate: (path) => navigate(path),
   })
   const hiitTimer = useHiitTimer({
     quest,
@@ -184,7 +185,7 @@ export default function Training() {
   // ------------------------ CONTROLS --------------------------
   const startCountdown = () => {
     setCountdown(3)
-    const countdownInterval = window.setInterval(() => {
+    const countdownInterval = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(countdownInterval)
@@ -211,13 +212,25 @@ export default function Training() {
     }
   }
 
-  const finishWorkout = async () => {
-    console.log('🏁 finishWorkout appelée dans Training.tsx')
-    
-    // Arrêter le workout
+  const cancelWorkout = async () => {
     workoutSession.setIsRunning(false)
-    
-    // Sauvegarder la session avant de naviguer
+    if (workoutSession.session) {
+      try {
+        await supabase
+          .from('workout_sessions')
+          .delete()
+          .eq('id', workoutSession.session.id)
+      } catch (error) {
+        console.warn('⚠️ Erreur annulation session:', error)
+      }
+    }
+    clearLiveSession()
+    navigate('/')
+  }
+
+  const finishWorkout = async () => {
+    workoutSession.setIsRunning(false)
+
     if (workoutSession.session) {
       try {
         await supabase
@@ -225,15 +238,35 @@ export default function Training() {
           .update({
             total_time_seconds: workoutSession.time,
             rounds_completed: workoutSession.rounds,
-            updated_at: new Date().toISOString(),
           })
           .eq('id', workoutSession.session.id)
       } catch (error) {
         console.warn('⚠️ Erreur sauvegarde session:', error)
       }
     }
-    
+
     clearLiveSession()
+
+    // Check for a finisher quest on the same day
+    if (quest?.day_of_week != null && quest?.campaign_id) {
+      try {
+        const { data: finisher } = await supabase
+          .from('quests')
+          .select('id')
+          .eq('campaign_id', quest.campaign_id)
+          .eq('day_of_week', quest.day_of_week)
+          .in('workout_type', ['amrap', 'emom', 'tabata'])
+          .limit(1)
+          .maybeSingle()
+
+        if (finisher?.id) {
+          setFinisherQuestId(finisher.id)
+          setShowFinisherDialog(true)
+          return
+        }
+      } catch { /* silencieux */ }
+    }
+
     navigate(`/training/${questId}/summary`)
   }
 
@@ -289,6 +322,7 @@ export default function Training() {
             onPause={workoutSession.pauseWorkout}
             onReset={workoutSession.resetWorkout}
             onFinishWorkout={finishWorkout}
+            onCancelWorkout={cancelWorkout}
           />
 
           <WorkoutRewardsModal
@@ -301,6 +335,36 @@ export default function Training() {
               questTitle: quest?.title
             }}
           />
+
+          <Dialog open={showFinisherDialog} onOpenChange={setShowFinisherDialog}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Finisher disponible</DialogTitle>
+                <DialogDescription>
+                  Un finisher HIIT est prévu pour cette séance. Tu veux l'enchaîner maintenant ?
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-3 mt-2">
+                <Button
+                  onClick={() => {
+                    setShowFinisherDialog(false)
+                    navigate(`/training/${finisherQuestId}`)
+                  }}
+                >
+                  Lancer le finisher
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowFinisherDialog(false)
+                    navigate(`/training/${questId}/summary`)
+                  }}
+                >
+                  Passer, aller au résumé
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     )

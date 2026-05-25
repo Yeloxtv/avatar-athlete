@@ -6,6 +6,12 @@ import { XpService } from '@/services/xpService'
 
 type QuestExercise = Tables<'quest_exercises'>
 
+// Extended type that carries enriched data from the exercises table
+export type EnrichedQuestExercise = QuestExercise & {
+  gif_url?: string | null
+  global_exercise_id?: string | null
+}
+
 interface UseStrengthWorkoutProps {
   exercises: QuestExercise[]
   sessionId: string
@@ -20,6 +26,23 @@ interface UseStrengthWorkoutProps {
   }) => void
 }
 
+async function enrichExercisesWithGifs(exercises: QuestExercise[]): Promise<EnrichedQuestExercise[]> {
+  if (!exercises.length) return exercises
+  const names = exercises.map(e => e.name).filter(Boolean)
+  const { data } = await supabase
+    .from('exercises')
+    .select('id, name, gif_url')
+    .in('name', names)
+  if (!data?.length) return exercises
+  const byName = new Map(data.map(e => [e.name, e]))
+  return exercises.map(ex => {
+    const match = byName.get(ex.name)
+    return match
+      ? { ...ex, gif_url: match.gif_url, global_exercise_id: match.id }
+      : ex
+  })
+}
+
 export const useStrengthWorkout = ({
   exercises: initialExercises,
   sessionId,
@@ -27,12 +50,12 @@ export const useStrengthWorkout = ({
   onSetCompleted
 }: UseStrengthWorkoutProps) => {
 
-  const [exercises, setExercises] = useState<QuestExercise[]>(initialExercises)
+  const [exercises, setExercises] = useState<EnrichedQuestExercise[]>(initialExercises)
 
-  // Sync quand la quête charge après le premier render (initialExercises était vide)
+  // Sync + enrich with gif_url when exercises load
   useEffect(() => {
     if (initialExercises.length > 0) {
-      setExercises(initialExercises)
+      enrichExercisesWithGifs(initialExercises).then(setExercises)
     }
   }, [initialExercises.length])
 
@@ -71,7 +94,7 @@ export const useStrengthWorkout = ({
     const restTime = exerciseRestTime
     setState(prev => ({ ...prev, isResting: true, restTimer: restTime }))
 
-    restTimerRef.current = window.setInterval(() => {
+    restTimerRef.current = setInterval(() => {
       setState(prev => {
         if (prev.restTimer <= 1) {
           if (restTimerRef.current) {
@@ -100,7 +123,7 @@ export const useStrengthWorkout = ({
   const completeSet = useCallback(async (setData: SetInput) => {
     if (!currentExercise || !sessionId) return
 
-    const globalExerciseId = (currentExercise as any).global_exercise_id ?? null
+    const globalExerciseId = (currentExercise as EnrichedQuestExercise).global_exercise_id ?? null
 
     const newLog: ExerciseLog = {
       session_id: sessionId,
@@ -299,32 +322,24 @@ export const useStrengthWorkout = ({
     const original = exercises[idx]
     if (!original) return
 
-    // Remplace le nom dans la liste locale (garde tous les autres champs : sets, reps, rest)
-    const substituted: QuestExercise = {
-      ...original,
-      name: substituteName,
-      // on stocke l'id global pour le logging
-      // @ts-ignore — champ extra non typé
-      global_exercise_id: globalExerciseId,
-    }
+    // Fetch gif_url for the substitute from the exercises table
+    let gifUrl: string | null = null
+    try {
+      const { data: exData } = await supabase
+        .from('exercises')
+        .select('gif_url')
+        .eq('id', globalExerciseId)
+        .maybeSingle()
+      gifUrl = exData?.gif_url ?? null
+    } catch { /* non-blocking */ }
 
-    setExercises(prev => {
-      const next = [...prev]
-      next[idx] = substituted
-      return next
-    })
-
-    // Charger les perfs précédentes pour le nouvel exercice par nom
+    // Charger les perfs passées pour pré-remplir target_reps/target_weight
+    let bestReps: number | null = null
+    let bestWeight: number | null = null
     try {
       const { data: logs } = await supabase
         .from('exercise_logs')
-        .select(`
-          session_id,
-          completed_at,
-          reps_completed,
-          weight_used,
-          exercise_name
-        `)
+        .select('session_id, completed_at, reps_completed, weight_used, exercise_name')
         .eq('exercise_name', substituteName)
         .neq('session_id', sessionId)
         .order('completed_at', { ascending: false })
@@ -338,11 +353,14 @@ export const useStrengthWorkout = ({
           if (c.reps_completed === b.reps_completed && (c.weight_used ?? 0) > (b.weight_used ?? 0)) return c
           return b
         })
+        bestReps = best.reps_completed ?? null
+        bestWeight = best.weight_used ?? null
+
         setState(prev => ({
           ...prev,
           previousPerformances: {
             ...prev.previousPerformances,
-            [substituted.id]: {
+            [original.id]: {
               reps_completed: best.reps_completed ?? 0,
               weight_used: best.weight_used ?? null,
               session_date: best.completed_at,
@@ -350,18 +368,35 @@ export const useStrengthWorkout = ({
           }
         }))
       } else {
-        // Pas d'historique pour cet exercice
         setState(prev => ({
           ...prev,
-          previousPerformances: {
-            ...prev.previousPerformances,
-            [substituted.id]: null,
-          }
+          previousPerformances: { ...prev.previousPerformances, [original.id]: null }
         }))
       }
-    } catch {
-      // silencieux
+    } catch { /* silencieux */ }
+
+    const substituted: EnrichedQuestExercise = {
+      ...original,
+      name: substituteName,
+      global_exercise_id: globalExerciseId,
+      gif_url: gifUrl,
+      // Pré-remplir avec l'historique si disponible, sinon garder les valeurs originales
+      target_reps: bestReps ?? original.target_reps,
+      target_weight: bestWeight ?? original.target_weight,
     }
+
+    setExercises(prev => {
+      const next = [...prev]
+      next[idx] = substituted
+      return next
+    })
+
+    // Persist exercise_id on quest_exercises row
+    supabase
+      .from('quest_exercises')
+      .update({ exercise_id: globalExerciseId } as any)
+      .eq('id', original.id)
+      .then(() => { /* fire-and-forget */ })
   }, [state.currentExerciseIndex, exercises, sessionId])
 
   useEffect(() => {

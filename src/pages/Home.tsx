@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { LEVELS } from '@/data/rpgLevels'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift, User } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Zap, Swords, Target, Gift } from 'lucide-react'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -154,7 +154,7 @@ export default function Home() {
                 {LEVELS.find(l => l.level === level)?.title ?? 'Apprenti Éveillé'}
               </p>
             </div>
-            <User className="w-4 h-4 text-muted-foreground shrink-0" />
+            <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
           </div>
 
           {/* Barre XP */}
