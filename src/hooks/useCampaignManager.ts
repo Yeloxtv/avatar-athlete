@@ -50,7 +50,6 @@ export const useCampaignManager = () => {
       slug,
       description: campaign.description || "",
       is_active: Boolean(campaign.is_active),
-      level_required: campaign.level_required || 'BEGINNER',
       equipment_tags: campaign.equipment_tags || [],
       estimated_duration_weeks: campaign.estimated_duration_weeks || 4,
     };

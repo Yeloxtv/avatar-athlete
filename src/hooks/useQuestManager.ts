@@ -109,20 +109,10 @@ export const useQuestManager = () => {
       title: quest.title,
       description: quest.description || "",
       type: quest.type || "quete",
-
-      xp_force: Number(quest.xp_force) || 0,
-      xp_endurance: Number(quest.xp_endurance) || 0,
-      xp_agilite: Number(quest.xp_agilite) || 0,
-      xp_mental: Number(quest.xp_mental) || 0,
-      xp_total,
-
       workout_type: quest.workout_type || "simple",
       work_seconds: Number(quest.work_seconds) || 0,
       rest_seconds: Number(quest.rest_seconds) || 0,
-      rounds_target: Number(quest.rounds_target) || 0,
       total_minutes: Number(quest.total_minutes) || 0,
-
-      level_required: quest.level_required || 'BEGINNER',
       equipment_tags: quest.equipment_tags || [],
       estimated_duration_minutes: quest.estimated_duration_minutes || 30,
       is_one_shot: Boolean(quest.is_one_shot),
