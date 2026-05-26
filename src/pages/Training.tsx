@@ -104,6 +104,36 @@ export default function Training() {
 
       setQuest(questData)
 
+      if (questData.workout_type !== 'strength') {
+        // Créer la session HIIT au chargement
+        const { data: newSession } = await supabase
+          .from('workout_sessions')
+          .insert({
+            user_id: user.id,
+            quest_id: questId,
+            workout_type: questData.workout_type,
+            started_at: new Date().toISOString(),
+            is_completed: false,
+            total_time_seconds: 0,
+            rounds_completed: 0,
+          })
+          .select()
+          .single()
+
+        if (newSession) {
+          workoutSession.setSession(newSession)
+          startLiveSession({
+            sessionId: newSession.id,
+            questId: questId!,
+            questTitle: questData.title,
+            currentExerciseName: questData.exercises[0]?.name ?? '',
+            currentExerciseIndex: 0,
+            totalExercises: questData.exercises.length,
+            progressPercentage: 0,
+          })
+        }
+      }
+
       if (questData.workout_type === 'strength') {
         // Réutiliser la session incomplète existante si elle existe
         const { data: existingSession } = await supabase
@@ -237,8 +267,8 @@ export default function Training() {
 
     clearLiveSession()
 
-    // Check for a finisher quest on the same day
-    if (quest?.day_of_week != null && quest?.campaign_id) {
+    // Check for a finisher quest only after a strength workout
+    if (quest?.workout_type === 'strength' && quest?.day_of_week != null && quest?.campaign_id) {
       try {
         const { data: finisher } = await supabase
           .from('quests')

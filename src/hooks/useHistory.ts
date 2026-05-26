@@ -78,7 +78,7 @@ export function useHistory() {
             .eq('is_completed', true)
             .order('ended_at', { ascending: false })
             .limit(1)
-            .single()
+            .maybeSingle()
 
           return {
             id: uq.quests.id,
