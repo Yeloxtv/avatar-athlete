@@ -10,138 +10,10 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
-      audit_xp: {
-        Row: {
-          created_at: string
-          delta_agilite: number | null
-          delta_endurance: number | null
-          delta_force: number | null
-          delta_mental: number | null
-          delta_total: number | null
-          id: string
-          quest_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          delta_agilite?: number | null
-          delta_endurance?: number | null
-          delta_force?: number | null
-          delta_mental?: number | null
-          delta_total?: number | null
-          id?: string
-          quest_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          delta_agilite?: number | null
-          delta_endurance?: number | null
-          delta_force?: number | null
-          delta_mental?: number | null
-          delta_total?: number | null
-          id?: string
-          quest_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "audit_xp_quest_id_fkey"
-            columns: ["quest_id"]
-            isOneToOne: false
-            referencedRelation: "quests"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      badges: {
-        Row: {
-          condition_type: string
-          condition_value: number
-          created_at: string
-          description: string | null
-          emoji: string
-          id: string
-          name: string
-          slug: string
-        }
-        Insert: {
-          condition_type: string
-          condition_value: number
-          created_at?: string
-          description?: string | null
-          emoji: string
-          id?: string
-          name: string
-          slug: string
-        }
-        Update: {
-          condition_type?: string
-          condition_value?: number
-          created_at?: string
-          description?: string | null
-          emoji?: string
-          id?: string
-          name?: string
-          slug?: string
-        }
-        Relationships: []
-      }
-      exercises: {
-        Row: {
-          id: string
-          external_id: string | null
-          name: string
-          name_fr: string | null
-          body_part: string | null
-          target_muscle: string
-          secondary_muscles: string[] | null
-          equipment: string | null
-          difficulty: string | null
-          instructions: string[] | null
-          gif_url: string | null
-          image_url: string | null
-          video_url: string | null
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          external_id?: string | null
-          name: string
-          name_fr?: string | null
-          body_part?: string | null
-          target_muscle: string
-          secondary_muscles?: string[] | null
-          equipment?: string | null
-          difficulty?: string | null
-          instructions?: string[] | null
-          gif_url?: string | null
-          image_url?: string | null
-          video_url?: string | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          external_id?: string | null
-          name?: string
-          name_fr?: string | null
-          body_part?: string | null
-          target_muscle?: string
-          secondary_muscles?: string[] | null
-          equipment?: string | null
-          difficulty?: string | null
-          instructions?: string[] | null
-          gif_url?: string | null
-          image_url?: string | null
-          video_url?: string | null
-          created_at?: string
-        }
-        Relationships: []
-      }
       campaigns: {
         Row: {
           created_at: string
@@ -151,7 +23,6 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_published: boolean | null
-          level_required: string | null
           owner_user_id: string | null
           slug: string
           title: string
@@ -164,7 +35,6 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_published?: boolean | null
-          level_required?: string | null
           owner_user_id?: string | null
           slug: string
           title: string
@@ -177,10 +47,205 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_published?: boolean | null
-          level_required?: string | null
           owner_user_id?: string | null
           slug?: string
           title?: string
+        }
+        Relationships: []
+      }
+      chests: {
+        Row: {
+          cards_count: number
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          name: string
+          prob_common: number
+          prob_epic: number
+          prob_legendary: number
+          prob_rare: number
+          slug: string
+        }
+        Insert: {
+          cards_count?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+          prob_common?: number
+          prob_epic?: number
+          prob_legendary?: number
+          prob_rare?: number
+          slug: string
+        }
+        Update: {
+          cards_count?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          prob_common?: number
+          prob_epic?: number
+          prob_legendary?: number
+          prob_rare?: number
+          slug?: string
+        }
+        Relationships: []
+      }
+      collectibles: {
+        Row: {
+          base_value: number
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          rarity: string
+          slug: string
+          upgrade_cost: number
+        }
+        Insert: {
+          base_value?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          rarity?: string
+          slug: string
+          upgrade_cost?: number
+        }
+        Update: {
+          base_value?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          rarity?: string
+          slug?: string
+          upgrade_cost?: number
+        }
+        Relationships: []
+      }
+      exercise_logs: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          exercise_id: string | null
+          exercise_name: string | null
+          global_exercise_id: string | null
+          id: string
+          reps_completed: number
+          session_id: string | null
+          set_number: number
+          weight_used: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          exercise_id?: string | null
+          exercise_name?: string | null
+          global_exercise_id?: string | null
+          id?: string
+          reps_completed: number
+          session_id?: string | null
+          set_number: number
+          weight_used?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          exercise_id?: string | null
+          exercise_name?: string | null
+          global_exercise_id?: string | null
+          id?: string
+          reps_completed?: number
+          session_id?: string | null
+          set_number?: number
+          weight_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_logs_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "quest_exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_logs_global_exercise_id_fkey"
+            columns: ["global_exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_logs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exercises: {
+        Row: {
+          body_part: string | null
+          created_at: string | null
+          difficulty: string | null
+          equipment: string | null
+          external_id: string | null
+          gif_url: string | null
+          id: string
+          image_url: string | null
+          instructions: string[] | null
+          name: string
+          name_fr: string | null
+          secondary_muscles: string[] | null
+          target_muscle: string
+          video_url: string | null
+        }
+        Insert: {
+          body_part?: string | null
+          created_at?: string | null
+          difficulty?: string | null
+          equipment?: string | null
+          external_id?: string | null
+          gif_url?: string | null
+          id?: string
+          image_url?: string | null
+          instructions?: string[] | null
+          name: string
+          name_fr?: string | null
+          secondary_muscles?: string[] | null
+          target_muscle: string
+          video_url?: string | null
+        }
+        Update: {
+          body_part?: string | null
+          created_at?: string | null
+          difficulty?: string | null
+          equipment?: string | null
+          external_id?: string | null
+          gif_url?: string | null
+          id?: string
+          image_url?: string | null
+          instructions?: string[] | null
+          name?: string
+          name_fr?: string | null
+          secondary_muscles?: string[] | null
+          target_muscle?: string
+          video_url?: string | null
         }
         Relationships: []
       }
@@ -190,86 +255,78 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
-          level: number | null
-          stat_agilite: number | null
-          stat_endurance: number | null
-          stat_force: number | null
-          stat_mental: number | null
           updated_at: string
           user_id: string
-          user_mode: 'guided' | 'autonomous' | null
-          xp_total: number | null
+          user_mode: string | null
         }
         Insert: {
           avatar_emoji?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
-          level?: number | null
-          stat_agilite?: number | null
-          stat_endurance?: number | null
-          stat_force?: number | null
-          stat_mental?: number | null
           updated_at?: string
           user_id: string
-          user_mode?: 'guided' | 'autonomous' | null
-          xp_total?: number | null
+          user_mode?: string | null
         }
         Update: {
           avatar_emoji?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
-          level?: number | null
-          stat_agilite?: number | null
-          stat_endurance?: number | null
-          stat_force?: number | null
-          stat_mental?: number | null
           updated_at?: string
           user_id?: string
-          user_mode?: 'guided' | 'autonomous' | null
-          xp_total?: number | null
+          user_mode?: string | null
         }
         Relationships: []
       }
       quest_exercises: {
         Row: {
           created_at: string
+          exercise_id: string | null
           id: string
           name: string
           notes: string | null
           order_index: number
           quest_id: string
-          target_reps: number | null
-          sets_count: number | null
-          target_weight: number | null  
           rest_seconds: number | null
+          sets_count: number | null
+          target_reps: number | null
+          target_weight: number | null
         }
         Insert: {
           created_at?: string
+          exercise_id?: string | null
           id?: string
           name: string
           notes?: string | null
           order_index: number
           quest_id: string
-          target_reps?: number | null
-          sets_count?: number | null
-          target_weight?: number | null
           rest_seconds?: number | null
+          sets_count?: number | null
+          target_reps?: number | null
+          target_weight?: number | null
         }
         Update: {
           created_at?: string
+          exercise_id?: string | null
           id?: string
           name?: string
           notes?: string | null
           order_index?: number
           quest_id?: string
-          target_reps?: number | null
-          sets_count?: number | null
-          target_weight?: number | null
           rest_seconds?: number | null
+          sets_count?: number | null
+          target_reps?: number | null
+          target_weight?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quest_exercises_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quest_exercises_quest_id_fkey"
             columns: ["quest_id"]
@@ -290,20 +347,15 @@ export type Database = {
           id: string
           is_one_shot: boolean | null
           is_published: boolean | null
-          level_required: string | null
           order_index: number
           rest_seconds: number | null
-          rounds_target: number | null
+          rest_time_seconds: number | null
+          sets_count: number | null
           title: string
           total_minutes: number | null
           type: string
           work_seconds: number | null
           workout_type: string
-          xp_agilite: number | null
-          xp_endurance: number | null
-          xp_force: number | null
-          xp_mental: number | null
-          xp_total: number | null
         }
         Insert: {
           campaign_id: string
@@ -315,20 +367,15 @@ export type Database = {
           id?: string
           is_one_shot?: boolean | null
           is_published?: boolean | null
-          level_required?: string | null
           order_index: number
           rest_seconds?: number | null
-          rounds_target?: number | null
+          rest_time_seconds?: number | null
+          sets_count?: number | null
           title: string
           total_minutes?: number | null
           type: string
           work_seconds?: number | null
           workout_type: string
-          xp_agilite?: number | null
-          xp_endurance?: number | null
-          xp_force?: number | null
-          xp_mental?: number | null
-          xp_total?: number | null
         }
         Update: {
           campaign_id?: string
@@ -340,20 +387,15 @@ export type Database = {
           id?: string
           is_one_shot?: boolean | null
           is_published?: boolean | null
-          level_required?: string | null
           order_index?: number
           rest_seconds?: number | null
-          rounds_target?: number | null
+          rest_time_seconds?: number | null
+          sets_count?: number | null
           title?: string
           total_minutes?: number | null
           type?: string
           work_seconds?: number | null
           workout_type?: string
-          xp_agilite?: number | null
-          xp_endurance?: number | null
-          xp_force?: number | null
-          xp_mental?: number | null
-          xp_total?: number | null
         }
         Relationships: [
           {
@@ -400,31 +442,91 @@ export type Database = {
           },
         ]
       }
-      user_badges: {
+      user_chests: {
         Row: {
-          badge_id: string
+          chest_id: string
+          created_at: string
           id: string
-          unlocked_at: string
+          opened_at: string | null
+          session_id: string | null
+          source: string
+          status: string
+          unlocked_at: string | null
           user_id: string
         }
         Insert: {
-          badge_id: string
+          chest_id: string
+          created_at?: string
           id?: string
-          unlocked_at?: string
+          opened_at?: string | null
+          session_id?: string | null
+          source?: string
+          status?: string
+          unlocked_at?: string | null
           user_id: string
         }
         Update: {
-          badge_id?: string
+          chest_id?: string
+          created_at?: string
           id?: string
-          unlocked_at?: string
+          opened_at?: string | null
+          session_id?: string | null
+          source?: string
+          status?: string
+          unlocked_at?: string | null
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "user_badges_badge_id_fkey"
-            columns: ["badge_id"]
+            foreignKeyName: "user_chests_chest_id_fkey"
+            columns: ["chest_id"]
             isOneToOne: false
-            referencedRelation: "badges"
+            referencedRelation: "chests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_chests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_collectibles: {
+        Row: {
+          card_level: number
+          collectible_id: string
+          copies: number
+          id: string
+          obtained_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          card_level?: number
+          collectible_id: string
+          copies?: number
+          id?: string
+          obtained_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          card_level?: number
+          collectible_id?: string
+          copies?: number
+          id?: string
+          obtained_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_collectibles_collectible_id_fkey"
+            columns: ["collectible_id"]
+            isOneToOne: false
+            referencedRelation: "collectibles"
             referencedColumns: ["id"]
           },
         ]
@@ -496,6 +598,7 @@ export type Database = {
           ended_at?: string | null
           id?: string
           is_completed?: boolean | null
+          note?: string | null
           quest_id?: string
           rounds_completed?: number | null
           started_at?: string
@@ -518,10 +621,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      complete_quest: {
-        Args: { p_quest_id: string }
-        Returns: Json
-      }
+      complete_quest: { Args: { p_quest_id: string }; Returns: Json }
       initialize_user_quests: {
         Args: { p_campaign_id: string; p_user_id: string }
         Returns: undefined

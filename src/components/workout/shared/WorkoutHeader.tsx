@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft } from 'lucide-react'
-import { LevelDisplay } from '@/components/ui/level-display'
 
 interface WorkoutHeaderProps {
   quest: {
@@ -15,7 +14,7 @@ interface WorkoutHeaderProps {
   showLevelDisplay?: boolean
 }
 
-export default function WorkoutHeader({ quest, onBack, showLevelDisplay = true }: WorkoutHeaderProps) {
+export default function WorkoutHeader({ quest, onBack }: WorkoutHeaderProps) {
   const getWorkoutTypeLabel = (type: string) => {
     switch (type) {
       case 'simple': return 'Simple'
@@ -29,33 +28,22 @@ export default function WorkoutHeader({ quest, onBack, showLevelDisplay = true }
   }
 
   return (
-    <>
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span>{quest.type === 'boss' ? '👑' : quest.workout_type === 'strength' ? '🏋️' : '⚔️'}</span>
-            {quest.title}
-          </h1>
-          <div className="flex gap-2 mt-1">
-            <Badge variant="outline">{getWorkoutTypeLabel(quest.workout_type)}</Badge>
-            {quest.type === 'boss' && (
-              <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Boss Fight</Badge>
-            )}
-          </div>
+    <div className="flex items-center gap-4">
+      <Button variant="ghost" size="icon" onClick={onBack}>
+        <ArrowLeft className="w-5 h-5" />
+      </Button>
+      <div className="flex-1">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <span>{quest.type === 'boss' ? '👑' : quest.workout_type === 'strength' ? '🏋️' : '⚔️'}</span>
+          {quest.title}
+        </h1>
+        <div className="flex gap-2 mt-1">
+          <Badge variant="outline">{getWorkoutTypeLabel(quest.workout_type)}</Badge>
+          {quest.type === 'boss' && (
+            <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30">Boss Fight</Badge>
+          )}
         </div>
-        {showLevelDisplay && <LevelDisplay variant="compact" className="hidden md:block" />}
       </div>
-
-      {/* Level Display Mobile */}
-      {showLevelDisplay && (
-        <div className="md:hidden mb-4">
-          <LevelDisplay variant="compact" />
-        </div>
-      )}
-    </>
+    </div>
   )
 }

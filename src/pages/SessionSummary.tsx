@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,6 +14,7 @@ export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { user } = useAuth()
 
   const [quest, setQuest] = useState<Quest | null>(null)
   const [session, setSession] = useState<WorkoutSession | null>(null)
@@ -24,7 +26,7 @@ export default function SessionSummary() {
 
   useEffect(() => {
     const load = async () => {
-      if (!questId || !profile?.id) return
+      if (!questId || !user?.id) return
       try {
         const { data: questData, error: questError } = await supabase
           .from('quests')
@@ -37,7 +39,7 @@ export default function SessionSummary() {
         const { data: sessionData, error: sessionError } = await supabase
           .from('workout_sessions')
           .select('*')
-          .eq('user_id', profile.id)
+          .eq('user_id', user!.id)
           .eq('quest_id', questId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -61,7 +63,7 @@ export default function SessionSummary() {
       }
     }
     load()
-  }, [questId, profile?.id])
+  }, [questId, user?.id])
 
   const handleSaveNote = async () => {
     if (!session) return

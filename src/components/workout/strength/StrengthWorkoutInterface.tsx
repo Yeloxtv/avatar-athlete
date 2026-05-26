@@ -1,21 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { triggerHaptic } from '@/platform/haptics'
 import { playSuccessSound } from '@/platform/sound'
-import { useProfile } from '@/hooks/useProfile'
-import { useAuth } from '@/hooks/useAuth'
-import { useRpgProgress } from '@/hooks/useRpgProgress'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/types/workout'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { RewardResult } from '@/types/rpg'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
-
-type StrengthWorkoutReturn = ReturnType<typeof useStrengthWorkout>
-// useStrengthWorkout est importé uniquement pour typer ReturnType — l'instance est gérée dans Training.tsx
 import { Clock, StopCircle, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SeriesDots } from './SeriesDots'
@@ -23,11 +16,7 @@ import { RestPhase } from './RestPhase'
 import { SessionDrawer } from './SessionDrawer'
 import { SubstituteDrawer } from './SubstituteDrawer'
 
-interface SessionSummary {
-  rounds: number
-  totalTime: number
-  questTitle?: string
-}
+type StrengthWorkoutReturn = ReturnType<typeof useStrengthWorkout>
 
 interface StrengthWorkoutInterfaceProps {
   quest: Quest & { exercises: QuestExercise[] }
@@ -42,8 +31,6 @@ interface StrengthWorkoutInterfaceProps {
   onCancelWorkout: () => void
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
@@ -54,8 +41,6 @@ function playMicroRewardFeedback() {
   triggerHaptic(35)
   playSuccessSound()
 }
-
-// ─── Chip helper ────────────────────────────────────────────────────────────
 
 function Chip({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -71,8 +56,6 @@ function Chip({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
-// ─── Main component ────────────────────────────────────────────────────────
-
 export default function StrengthWorkoutInterface({
   quest,
   session,
@@ -85,28 +68,19 @@ export default function StrengthWorkoutInterface({
   onFinishWorkout,
   onCancelWorkout
 }: StrengthWorkoutInterfaceProps) {
-  const { profile } = useProfile()
-  const { user } = useAuth()
-  const { processWorkoutRewards, isProcessingRewards } = useRpgProgress()
-
   const [showSummary, setShowSummary] = useState(false)
-  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null)
   const [showStopConfirm, setShowStopConfirm] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
-  const [showRewardsModal, setShowRewardsModal] = useState(false)
-  const [rewardResults, setRewardResults] = useState<RewardResult | null>(null)
   const [showPRFlash, setShowPRFlash] = useState(false)
   const [liveXp, setLiveXp] = useState(0)
   const [lastSetXp, setLastSetXp] = useState<number | null>(null)
 
-  // Écouter les nouvelles séries complétées pour le feedback XP live
   const prevCompletedSets = useRef(strengthWorkout.state.completedSets)
   useEffect(() => {
     const prev = prevCompletedSets.current
     const curr = strengthWorkout.state.completedSets
     if (curr > prev) {
       playMicroRewardFeedback()
-      // XP approximatif par série (sera affiné si onSetCompleted passe le vrai XP)
       const xp = 18
       setLiveXp(v => v + xp)
       setLastSetXp(xp)
@@ -115,8 +89,6 @@ export default function StrengthWorkoutInterface({
     prevCompletedSets.current = curr
   }, [strengthWorkout.state.completedSets])
 
-
-  // Flash PR — 3s puis disparaît
   useEffect(() => {
     if (strengthWorkout.lastPR) {
       setShowPRFlash(true)
@@ -129,11 +101,6 @@ export default function StrengthWorkoutInterface({
   }, [strengthWorkout.lastPR])
 
   const finishWorkout = () => {
-    setSessionSummary({
-      rounds: 0,
-      totalTime: time,
-      questTitle: quest?.title,
-    })
     setShowSummary(true)
   }
 
@@ -159,131 +126,6 @@ export default function StrengthWorkoutInterface({
     onFinishWorkout()
   }
 
-  const validateWorkout = async () => {
-    if (!quest || !profile || !user || !session || isProcessingRewards) return
-
-    try {
-      setShowSummary(false)
-
-      const { error: sessionError } = await supabase
-        .from('workout_sessions')
-        .update({
-          is_completed: true,
-          ended_at: new Date().toISOString(),
-          total_time_seconds: time,
-          rounds_completed: 0,
-        })
-        .eq('id', session.id)
-
-      if (sessionError) throw sessionError
-
-      const { error: questStatusError } = await supabase
-        .from('user_quests')
-        .upsert({
-          user_id: user.id,
-          quest_id: quest.id,
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id,quest_id'
-        })
-
-      if (questStatusError) throw questStatusError
-
-      let rewards = null
-      try {
-        rewards = await processWorkoutRewards({
-          durationMin: Math.ceil(time / 60),
-          workoutType: quest.workout_type,
-          intensity: 'MEDIUM',
-        })
-
-        if (rewards) {
-          setRewardResults(rewards)
-          setTimeout(() => setShowRewardsModal(true), 500)
-        }
-      } catch {
-        // erreur non bloquante
-      }
-
-      try {
-        await supabase.from('audit_xp').insert({
-          user_id: user.id,
-          quest_id: quest.id,
-          delta_force: quest.xp_force,
-          delta_endurance: quest.xp_endurance,
-          delta_agilite: quest.xp_agilite,
-          delta_mental: quest.xp_mental,
-          delta_total: quest.xp_force + quest.xp_endurance + quest.xp_agilite + quest.xp_mental,
-        })
-      } catch {
-        // erreur non bloquante
-      }
-
-      const { data: nextQuest } = await supabase
-        .from('quests')
-        .select('id, title')
-        .eq('campaign_id', quest.campaign_id)
-        .eq('order_index', quest.order_index + 1)
-        .maybeSingle()
-
-      if (nextQuest) {
-        await supabase
-          .from('user_quests')
-          .upsert({
-            user_id: user.id,
-            quest_id: nextQuest.id,
-            status: 'todo',
-          }, {
-            onConflict: 'user_id,quest_id'
-          })
-      }
-
-      toast({
-        title: "Validation réussie",
-        description: "Votre entraînement a été enregistré !",
-      })
-
-      if (!rewards) {
-        setTimeout(() => setShowRewardsModal(true), 500)
-      }
-
-    } catch (error) {
-      console.error('Erreur lors de la validation:', error)
-      toast({
-        title: 'Erreur de validation',
-        description: "Impossible de valider l'entraînement. Veuillez réessayer.",
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleRewardsModalClose = async () => {
-    setShowRewardsModal(false)
-    setRewardResults(null)
-
-    try {
-      if (quest?.campaign_id) {
-        const { data: campaign } = await supabase
-          .from('campaigns')
-          .select('slug')
-          .eq('id', quest.campaign_id)
-          .maybeSingle()
-
-        if (campaign?.slug) {
-          window.location.href = '/'
-          return
-        }
-      }
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Erreur lors de la redirection:', error)
-      window.location.href = '/'
-    }
-  }
-
-  // ── Computed ──────────────────────────────────────────────────────────────
-
   const { state, currentExercise, exercises, isWorkoutComplete, totalSets, exerciseRestTime } = strengthWorkout
   const sessionReady = !!session?.id
 
@@ -306,39 +148,32 @@ export default function StrengthWorkoutInterface({
 
   const previousPerf = strengthWorkout.getCurrentExercisePreviousPerformance()
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col min-h-0 bg-background">
 
-      {/* PR Flash — position fixe en haut */}
       {showPRFlash && strengthWorkout.lastPR && (
         <div className="fixed inset-x-0 top-0 z-50 flex justify-center pt-4 pointer-events-none px-4">
           <div className="bg-yellow-400 text-yellow-900 font-bold text-base px-5 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
             <span>NOUVEAU RECORD !</span>
             <span>
-              {strengthWorkout.lastPR.weight > 0
-                ? `${strengthWorkout.lastPR.weight}kg × `
-                : ''}
+              {strengthWorkout.lastPR.weight > 0 ? `${strengthWorkout.lastPR.weight}kg × ` : ''}
               {strengthWorkout.lastPR.reps} reps
             </span>
           </div>
         </div>
       )}
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-muted/30">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Clock className="w-3.5 h-3.5" />
           <span className="text-sm font-mono tabular-nums">{formatTime(time)}</span>
         </div>
-
         {!isWorkoutComplete && (
           <span className="text-xs text-muted-foreground font-medium">
             Exercice {exerciseNumber}/{exerciseTotal}
           </span>
         )}
-
         <Button
           variant="ghost"
           size="sm"
@@ -350,10 +185,9 @@ export default function StrengthWorkoutInterface({
         </Button>
       </div>
 
-      {/* ── Corps principal ────────────────────────────────────────────────── */}
+      {/* Corps */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* Phase repos */}
         {state.isResting && currentExercise && !isWorkoutComplete && (
           <RestPhase
             restTimer={state.restTimer}
@@ -364,11 +198,9 @@ export default function StrengthWorkoutInterface({
           />
         )}
 
-        {/* Phase exercice actif */}
         {!state.isResting && currentExercise && !isWorkoutComplete && (
           <div className="px-4 py-5 space-y-5">
 
-            {/* Nom de l'exercice */}
             <div className="text-center space-y-1">
               <h2 className="text-2xl font-bold tracking-tight leading-tight">
                 {currentExercise.name}
@@ -382,7 +214,6 @@ export default function StrengthWorkoutInterface({
               </div>
             </div>
 
-            {/* GIF démonstration */}
             {(currentExercise as any).gif_url && (
               <div className="flex justify-center">
                 <div className="w-48 h-48 rounded-xl overflow-hidden bg-muted/20 border border-muted/30">
@@ -396,14 +227,9 @@ export default function StrengthWorkoutInterface({
               </div>
             )}
 
-            {/* Chips de données */}
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <Chip label="Reps" value={String((currentExercise as any).target_reps ?? '—')} />
-              <Chip
-                label="Série"
-                value={`${state.currentSet}/${totalSets}`}
-                accent
-              />
+              <Chip label="Série" value={`${state.currentSet}/${totalSets}`} accent />
               <Chip
                 label="Charge"
                 value={(currentExercise as any).target_weight
@@ -411,13 +237,9 @@ export default function StrengthWorkoutInterface({
                   : 'Libre'
                 }
               />
-              <Chip
-                label="Repos"
-                value={`${exerciseRestTime}s`}
-              />
+              <Chip label="Repos" value={`${exerciseRestTime}s`} />
             </div>
 
-            {/* XP live — barre discrète */}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1">
@@ -431,17 +253,14 @@ export default function StrengthWorkoutInterface({
               <Progress value={liveXpProgress} className="h-1" />
             </div>
 
-            {/* Indicateurs de séries */}
             <SeriesDots
               total={totalSets}
               current={state.currentSet}
               completedLogs={strengthWorkout.currentExerciseLogs.length}
             />
 
-            {/* Séparateur */}
             <div className="border-t border-muted/20" />
 
-            {/* Saisie performances */}
             {!sessionReady ? (
               <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground text-sm">
                 <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -456,7 +275,6 @@ export default function StrengthWorkoutInterface({
               />
             )}
 
-            {/* Bouton voir la séance */}
             <SessionDrawer
               exercises={exercises}
               currentExerciseIndex={state.currentExerciseIndex}
@@ -467,7 +285,6 @@ export default function StrengthWorkoutInterface({
           </div>
         )}
 
-        {/* Fin d'entraînement */}
         {isWorkoutComplete && (
           <div className="flex flex-col items-center justify-center px-6 py-16 gap-6 text-center">
             <div className="text-5xl">🏆</div>
@@ -476,7 +293,6 @@ export default function StrengthWorkoutInterface({
               <p className="text-muted-foreground text-sm">
                 {state.completedSets} séries réalisées en {formatTime(time)}
               </p>
-              <p className="text-accent font-black text-2xl">+{liveXp} XP live</p>
             </div>
             <Button
               onClick={finishWorkout}
@@ -488,112 +304,40 @@ export default function StrengthWorkoutInterface({
         )}
       </div>
 
-      {/* ── Barre de progression globale ───────────────────────────────────── */}
+      {/* Barre progression */}
       {!isWorkoutComplete && (
         <div className="px-4 pb-4 pt-2 border-t border-muted/20">
           <div className="flex justify-between items-center mb-1.5">
             <span className="text-xs text-muted-foreground">Progression</span>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {state.completedSets} / {exercises.reduce((s, ex) => s + ((ex as any).sets_count || 3), 0)} séries
+              {state.completedSets} / {totalSetsInWorkout} séries
             </span>
           </div>
           <Progress value={strengthWorkout.progressPercentage} className="h-1.5" />
         </div>
       )}
 
-      {/* ── Dialog résumé séance ────────────────────────────────────────────── */}
+      {/* Dialog résumé */}
       <Dialog open={showSummary} onOpenChange={setShowSummary}>
         <DialogContent className="max-w-md mx-4 rpg-card">
           <DialogHeader>
             <DialogTitle className="text-center">Séance terminée !</DialogTitle>
             <DialogDescription className="text-center">
-              Séance de musculation complétée
+              {state.completedSets} séries en {formatTime(time)}
             </DialogDescription>
           </DialogHeader>
-
-          {sessionSummary && (
-            <div className="space-y-4">
-              <div className="text-center space-y-2">
-                <div className="text-2xl font-bold text-accent font-mono">
-                  {formatTime(sessionSummary.totalTime)}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Temps total d'entraînement
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Button
-                  onClick={validateWorkout}
-                  className="w-full bg-accent hover:bg-accent/90"
-                  disabled={isProcessingRewards}
-                >
-                  {isProcessingRewards ? 'Traitement...' : 'Valider la séance'}
-                </Button>
-                <Button
-                  onClick={() => setShowSummary(false)}
-                  variant="outline"
-                  className="w-full"
-                  disabled={isProcessingRewards}
-                >
-                  Annuler
-                </Button>
-              </div>
-            </div>
-          )}
+          <div className="space-y-2 pt-2">
+            <Button onClick={onFinishWorkout} className="w-full bg-accent hover:bg-accent/90">
+              Valider la séance
+            </Button>
+            <Button onClick={() => setShowSummary(false)} variant="outline" className="w-full">
+              Annuler
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog récompenses ──────────────────────────────────────────────── */}
-      <Dialog open={showRewardsModal} onOpenChange={handleRewardsModalClose}>
-        <DialogContent className="max-w-md mx-4 rpg-card">
-          <DialogHeader>
-            <DialogTitle className="text-center">Récompenses !</DialogTitle>
-          </DialogHeader>
-
-          {rewardResults && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                  <div className="text-2xl font-bold text-yellow-500">
-                    +{rewardResults.gainedXpGlobal}
-                  </div>
-                  <div className="text-xs text-muted-foreground">XP gagné</div>
-                </div>
-                {rewardResults.gainedStats && (
-                  <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
-                    <div className="text-2xl font-bold text-accent">
-                      +{Object.values(rewardResults.gainedStats).reduce((a, b) => (a ?? 0) + (b ?? 0), 0)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">Stats gagnées</div>
-                  </div>
-                )}
-              </div>
-
-              {rewardResults.dailyQuestCompleted && (
-                <div className="rounded-lg border border-accent/30 bg-accent/10 p-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-bold">Quête du jour accomplie</div>
-                    <div className="text-xs text-muted-foreground">{rewardResults.dailyQuestCompleted.title}</div>
-                  </div>
-                  <div className="text-lg font-black text-accent">
-                    +{rewardResults.dailyQuestCompleted.bonusXp} XP
-                  </div>
-                </div>
-              )}
-
-              <Button
-                onClick={handleRewardsModalClose}
-                className="w-full bg-accent hover:bg-accent/90"
-              >
-                Retourner à la campagne
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog arrêt séance ─────────────────────────────────────────────── */}
+      {/* Dialog arrêt */}
       <Dialog open={showStopConfirm} onOpenChange={setShowStopConfirm}>
         <DialogContent className="max-w-sm mx-4">
           <DialogHeader>
@@ -601,24 +345,14 @@ export default function StrengthWorkoutInterface({
             <DialogDescription>
               {state.completedSets > 0
                 ? `Tes ${state.completedSets} série${state.completedSets > 1 ? 's' : ''} effectuée${state.completedSets > 1 ? 's' : ''} seront sauvegardées.`
-                : 'La séance sera enregistrée même si elle n\'est pas terminée.'}
+                : "La séance sera enregistrée même si elle n'est pas terminée."}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-2">
-            <Button
-              onClick={stopAndSave}
-              disabled={isStopping}
-              variant="destructive"
-              className="w-full"
-            >
+            <Button onClick={stopAndSave} disabled={isStopping} variant="destructive" className="w-full">
               {isStopping ? 'Sauvegarde...' : 'Arrêter et sauvegarder'}
             </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setShowStopConfirm(false)}
-              disabled={isStopping}
-            >
+            <Button variant="outline" className="w-full" onClick={() => setShowStopConfirm(false)} disabled={isStopping}>
               Continuer la séance
             </Button>
             <Button

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { StrengthWorkoutState, ExerciseLog, SetInput, PreviousPerformance } from '@/types/strength'
 import type { Tables } from '@/integrations/supabase/types'
 import { supabase } from '@/integrations/supabase/client'
-import { XpService } from '@/services/xpService'
 
 type QuestExercise = Tables<'quest_exercises'>
 
@@ -159,7 +158,7 @@ export const useStrengthWorkout = ({
         setNumber: state.currentSet,
         reps: setData.reps,
         weight: setData.weight ?? 0,
-        xp: XpService.calculateLiveSetXp(setData.reps, setData.weight),
+        xp: 0,
       })
 
       setState(prev => {

@@ -3,7 +3,6 @@ import { useProfile } from '@/hooks/useProfile'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
 import { StreakService } from '@/services/streakService'
-import { DailyQuest, DailyQuestService } from '@/services/dailyQuestService'
 
 interface ExercisePerformance {
   exercise_id: string
@@ -19,19 +18,8 @@ interface SessionSummary {
   totalVolume: number
   exercises: ExercisePerformance[]
   intensity: 'Légère' | 'Modérée' | 'Intense'
-  streak: {
-    consecutive: number
-    thisWeek: number
-  }
-  xp: {
-    force: number
-    endurance: number
-    agilite: number
-    mental: number
-    total: number
-  }
+  streak: { consecutive: number; thisWeek: number }
   prs: Array<{ exercise_name: string; weight: number; reps: number }>
-  dailyQuest: DailyQuest
 }
 
 interface UseSessionSummaryProps {
@@ -67,10 +55,9 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
 
   const generateSummary = async (): Promise<SessionSummary | null> => {
     if (!quest || !session || !profile) return null
-
     setLoading(true)
+
     try {
-      // Charger les vrais exercise_logs de la séance
       const { data: logs } = await supabase
         .from('exercise_logs')
         .select('exercise_id, exercise_name, global_exercise_id, set_number, reps_completed, weight_used, quest_exercises(name)')
@@ -79,7 +66,7 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
         .order('set_number')
       const sessionLogs = (logs || []) as ExerciseLogRow[]
 
-      // Calculer le streak en incluant la session en cours de validation.
+      // Streak
       const { data: completedSessions } = await supabase
         .from('workout_sessions')
         .select('id, started_at, ended_at')
@@ -91,35 +78,12 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
         session.ended_at || session.started_at || new Date().toISOString(),
       ]
       const streak = StreakService.compute(streakDates)
-      const { start, end } = DailyQuestService.getTodayRange()
-      const todayCompletedSessions = (completedSessions || []).filter(completedSession => {
-        const date = new Date(completedSession.ended_at || completedSession.started_at)
-        return date >= start && date <= end
-      })
-      const todayCompletedSessionIds = todayCompletedSessions.map(completedSession => completedSession.id)
-      let previousTodaySets = 0
-      if (todayCompletedSessionIds.length > 0) {
-        const { count } = await supabase
-          .from('exercise_logs')
-          .select('id', { count: 'exact', head: true })
-          .in('session_id', todayCompletedSessionIds)
-        previousTodaySets = count || 0
-      }
-
-      const { data: xpRows } = await supabase
-        .from('audit_xp')
-        .select('delta_total')
-        .eq('user_id', profile.id)
-        .gte('created_at', start.toISOString())
-        .lte('created_at', end.toISOString())
 
       let exercises: ExercisePerformance[] = []
       let totalVolume = 0
-
       const prs: SessionSummary['prs'] = []
 
       if (sessionLogs.length > 0) {
-        // Grouper les logs par exercice
         const grouped = new Map<string, ExerciseLogRow[]>()
         for (const log of sessionLogs) {
           const key = getLoggedExerciseKey(log)
@@ -127,7 +91,6 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           grouped.get(key)!.push(log)
         }
 
-        // Charger les meilleures perfs précédentes pour chaque exercice
         const exerciseIds = [...new Set(sessionLogs.map(log => log.exercise_id))]
         const exerciseNames = [...new Set(sessionLogs.map(getLoggedExerciseName))]
         const [prevByIdResult, prevByNameResult] = await Promise.all([
@@ -149,7 +112,6 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           ...((prevByNameResult.data || []) as ExerciseLogRow[]),
         ]
 
-        // Meilleur poids précédent par exercice
         const prevBest = new Map<string, { weight: number; reps: number }>()
         for (const log of prevLogs) {
           const key = getLoggedExerciseKey(log)
@@ -175,7 +137,6 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           const volume = setsData.reduce((sum, s) => sum + s.reps * s.weight, 0)
           totalVolume += volume
 
-          // Détection PR
           const prev = prevBest.get(exerciseId)
           const isWeightPR = best_weight > 0 && (!prev || best_weight > prev.weight)
           const isRepsPR = !isWeightPR && prev && best_weight === prev.weight && best_reps_at_best_weight > prev.reps
@@ -186,7 +147,6 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
           return { exercise_id: exerciseId, exercise_name: name, sets: setsData, best_weight, total_reps, volume }
         })
       } else {
-        // Fallback sur les cibles de la quest si pas de logs
         exercises = (quest.exercises || []).map(ex => {
           const sets = ex.sets_count || 3
           const reps = ex.target_reps || 10
@@ -208,30 +168,17 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
       const intensity: SessionSummary['intensity'] =
         timeMinutes < 20 ? 'Légère' : timeMinutes < 50 ? 'Modérée' : 'Intense'
 
-      const sessionSummary: SessionSummary = {
+      const result: SessionSummary = {
         totalTime: time || session.total_time_seconds || 0,
         totalVolume,
         exercises,
         intensity,
         streak: { consecutive: streak.currentStreak, thisWeek: streak.weekDays.length },
-        xp: {
-          force: quest.xp_force || 0,
-          endurance: quest.xp_endurance || 0,
-          agilite: quest.xp_agilite || 0,
-          mental: quest.xp_mental || 0,
-          total: (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
-        },
         prs,
-        dailyQuest: DailyQuestService.compute({
-          completedWorkouts: todayCompletedSessions.length + 1,
-          completedSets: previousTodaySets + sessionLogs.length,
-          earnedXp: (xpRows || []).reduce((sum, row) => sum + (row.delta_total || 0), 0)
-            + (quest.xp_force || 0) + (quest.xp_endurance || 0) + (quest.xp_agilite || 0) + (quest.xp_mental || 0),
-        }),
       }
 
-      setSummary(sessionSummary)
-      return sessionSummary
+      setSummary(result)
+      return result
     } catch (error) {
       console.error('Erreur génération récapitulatif:', error)
       return null
@@ -253,7 +200,5 @@ export function useSessionSummary({ quest, session, time }: UseSessionSummaryPro
     }
   }
 
-  const getProgressionMessage = (): string => "Séance enregistrée !"
-
-  return { summary, loading, generateSummary, formatVolume, getIntensityEmoji, getProgressionMessage }
+  return { summary, loading, generateSummary, formatVolume, getIntensityEmoji }
 }

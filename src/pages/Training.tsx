@@ -1,5 +1,3 @@
-// FILE: src/pages/Training.tsx  (REMPLACEMENT COMPLET DU FICHIER)
-
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
@@ -10,15 +8,12 @@ import { useWorkoutSessionContext } from '@/contexts/WorkoutSessionContext'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { WorkoutRewardsModal } from '@/components/ui/workout-rewards-modal'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
-import { useWorkoutValidation } from '@/hooks/useWorkoutValidation'
 import { useWorkoutSession } from '@/hooks/useWorkoutSession'
 import { useHiitTimer } from '@/hooks/useHiitTimer'
 import WorkoutHeader from '@/components/workout/shared/WorkoutHeader'
 import StrengthWorkoutInterface from '@/components/workout/strength/StrengthWorkoutInterface'
 import HiitWorkoutInterface from '@/components/workout/hiit/HiitWorkoutInterface'
-import SessionSummaryModal from '@/components/workout/SessionSummaryModal'
 
 
 export default function Training() {
@@ -40,13 +35,6 @@ export default function Training() {
 
   // 🎯 HOOKS MÉTIER
   const workoutSession = useWorkoutSession({ quest })
-  const workoutValidation = useWorkoutValidation({
-    quest,
-    session: workoutSession.session,
-    time: workoutSession.time,
-    rounds: workoutSession.rounds,
-    onNavigate: (path) => navigate(path),
-  })
   const hiitTimer = useHiitTimer({
     quest,
     isStrengthWorkout,
@@ -327,17 +315,6 @@ export default function Training() {
             onCancelWorkout={cancelWorkout}
           />
 
-          <WorkoutRewardsModal
-            isOpen={workoutValidation.showRewardsModal}
-            onClose={workoutValidation.handleRewardsModalClose}
-            rewards={workoutValidation.rewardResults}
-            sessionData={{
-              rounds: workoutSession.rounds,
-              totalTime: workoutSession.time,
-              questTitle: quest?.title
-            }}
-          />
-
           <Dialog open={showFinisherDialog} onOpenChange={setShowFinisherDialog}>
             <DialogContent className="max-w-sm">
               <DialogHeader>
@@ -402,17 +379,6 @@ export default function Training() {
           onFinishWorkout={finishWorkout}
         />
 
-        {/* RPG Rewards Modal - Affichage après validation */}
-        <WorkoutRewardsModal
-          isOpen={workoutValidation.showRewardsModal}
-          onClose={workoutValidation.handleRewardsModalClose}
-          rewards={workoutValidation.rewardResults}
-          sessionData={{
-            rounds: workoutSession.rounds,
-            totalTime: workoutSession.time,
-            questTitle: quest?.title
-          }}
-        />
       </div>
     </div>
   )
