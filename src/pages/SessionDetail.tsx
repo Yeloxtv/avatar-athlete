@@ -33,7 +33,7 @@ interface FinisherData {
   workout_type: string
   total_time_seconds: number
   rounds_completed: number
-  exercises: Array<{ name: string; target_reps: number }>
+  exercises: Array<{ name: string; target_reps: number; reps_unit: string }>
 }
 
 interface SessionDetail {
@@ -145,7 +145,7 @@ const renderSessionPrintHtml = (session: SessionDetail, totalVolume: number, fin
           <tr>
             <td>${i + 1}</td>
             <td>${escapeHtml(ex.name)}</td>
-            <td style="text-align:right">${ex.target_reps > 0 ? ex.target_reps : '—'}</td>
+            <td style="text-align:right">${ex.target_reps > 0 ? `${ex.target_reps} ${escapeHtml(ex.reps_unit)}` : '—'}</td>
           </tr>`).join('')}
       </tbody>
     </table>` : ''}` : ''}
@@ -286,7 +286,7 @@ export default function SessionDetail() {
               .maybeSingle(),
             supabase
               .from('quest_exercises')
-              .select('name, target_reps, order_index')
+              .select('name, target_reps, reps_unit, order_index')
               .eq('quest_id', finisherQuest.id)
               .order('order_index'),
           ])
@@ -300,6 +300,7 @@ export default function SessionDetail() {
               exercises: (fExercisesResult.data || []).map(e => ({
                 name: e.name,
                 target_reps: e.target_reps || 0,
+                reps_unit: (e as any).reps_unit || 'reps',
               })),
             })
           }
@@ -519,7 +520,7 @@ export default function SessionDetail() {
                         <span className="text-muted-foreground w-5 shrink-0">{i + 1}</span>
                         <span className="flex-1">{ex.name}</span>
                         {ex.target_reps > 0 && (
-                          <span className="text-muted-foreground shrink-0">{ex.target_reps} reps</span>
+                          <span className="text-muted-foreground shrink-0">{ex.target_reps} {ex.reps_unit}</span>
                         )}
                       </div>
                     ))}

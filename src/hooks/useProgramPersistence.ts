@@ -269,6 +269,7 @@ export function useProgramPersistence() {
               order_index: idx + 1,
               sets_count: 1,
               target_reps: ex.target_reps,
+              reps_unit: ex.reps_unit ?? 'reps',
               target_weight: null,
               rest_seconds: 0,
               notes: null,

@@ -396,7 +396,7 @@ function Step3({
   // Finisher helpers
   const finisher = session.finisher
   const addFinisher = () => updateSession({
-    finisher: { format: 'amrap', duration_minutes: 10, exercises: [{ name: '', target_reps: 10 }] }
+    finisher: { format: 'amrap', duration_minutes: 10, exercises: [{ name: '', target_reps: 10, reps_unit: 'reps' }] }
   })
   const removeFinisher = () => updateSession({ finisher: null })
   const updateFinisher = (updates: Partial<FinisherDraft>) => {
@@ -585,14 +585,24 @@ function Step3({
                       }}
                     />
                   </div>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={fex.target_reps}
-                    onChange={e => updateFinisherExercise(fidx, 'target_reps', parseInt(e.target.value) || 1)}
-                    className="w-16 h-11 text-center font-bold px-1"
-                    placeholder="Reps"
-                  />
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={fex.target_reps}
+                      onChange={e => updateFinisherExercise(fidx, 'target_reps', parseInt(e.target.value) || 1)}
+                      className="w-16 h-11 text-center font-bold px-1"
+                    />
+                    <select
+                      value={fex.reps_unit ?? 'reps'}
+                      onChange={e => updateFinisherExercise(fidx, 'reps_unit', e.target.value)}
+                      className="h-11 rounded-md border border-input bg-background px-2 text-sm font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="reps">reps</option>
+                      <option value="m">m</option>
+                      <option value="cal">cal</option>
+                    </select>
+                  </div>
                   {finisher.exercises.length > 1 && (
                     <button
                       type="button"
@@ -608,7 +618,7 @@ function Step3({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => updateFinisher({ exercises: [...finisher.exercises, { name: '', target_reps: 10 }] })}
+                onClick={() => updateFinisher({ exercises: [...finisher.exercises, { name: '', target_reps: 10, reps_unit: 'reps' }] })}
                 className="text-yellow-500 hover:text-yellow-500 hover:bg-yellow-500/10 w-full"
               >
                 <Plus className="w-3 h-3 mr-1" /> Ajouter un exercice

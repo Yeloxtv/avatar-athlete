@@ -13,6 +13,7 @@ export interface ExerciseDraft {
 export interface FinisherExerciseDraft {
   name: string
   target_reps: number
+  reps_unit: 'reps' | 'm' | 'cal'
   global_exercise_id?: string | null
 }
 

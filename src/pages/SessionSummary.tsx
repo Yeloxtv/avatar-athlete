@@ -25,6 +25,7 @@ export default function SessionSummary() {
   // Finisher
   const [finisherSession, setFinisherSession] = useState<any | null>(null)
   const [finisherLogs, setFinisherLogs] = useState<any[]>([])
+  const [finisherExercises, setFinisherExercises] = useState<Array<{ name: string; target_reps: number; reps_unit: string }>>([])
   const [expandedFinisherExercise, setExpandedFinisherExercise] = useState<string | null>(null)
 
   useEffect(() => {
@@ -72,31 +73,42 @@ export default function SessionSummary() {
             .maybeSingle()
 
           if (finisherQuest) {
-            // Chercher le finisher démarré dans les 4h qui suivent la fin de la séance muscu
             const muscuEnd = new Date(sessionData.ended_at || sessionData.started_at)
-            const windowStart = new Date(muscuEnd.getTime() - 10 * 60 * 1000)  // 10 min avant (marge)
-            const windowEnd = new Date(muscuEnd.getTime() + 4 * 60 * 60 * 1000) // 4h après
+            const windowStart = new Date(muscuEnd.getTime() - 10 * 60 * 1000)
+            const windowEnd = new Date(muscuEnd.getTime() + 4 * 60 * 60 * 1000)
 
-            const { data: fSession } = await supabase
-              .from('workout_sessions')
-              .select('*')
-              .eq('user_id', user.id)
-              .eq('quest_id', finisherQuest.id)
-              .eq('is_completed', true)
-              .gte('started_at', windowStart.toISOString())
-              .lte('started_at', windowEnd.toISOString())
-              .order('ended_at', { ascending: false })
-              .limit(1)
-              .maybeSingle()
+            const [fSessionResult, fExercisesResult] = await Promise.all([
+              supabase
+                .from('workout_sessions')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('quest_id', finisherQuest.id)
+                .eq('is_completed', true)
+                .gte('started_at', windowStart.toISOString())
+                .lte('started_at', windowEnd.toISOString())
+                .order('ended_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+              supabase
+                .from('quest_exercises')
+                .select('name, target_reps, reps_unit, order_index')
+                .eq('quest_id', finisherQuest.id)
+                .order('order_index'),
+            ])
 
-            if (fSession) {
-              setFinisherSession({ ...fSession, title: finisherQuest.title })
+            if (fSessionResult.data) {
+              setFinisherSession({ ...fSessionResult.data, title: finisherQuest.title })
               const { data: fLogs } = await supabase
                 .from('exercise_logs')
                 .select('*')
-                .eq('session_id', fSession.id)
+                .eq('session_id', fSessionResult.data.id)
                 .order('set_number', { ascending: true })
               setFinisherLogs(fLogs || [])
+              setFinisherExercises((fExercisesResult.data || []).map(e => ({
+                name: e.name,
+                target_reps: e.target_reps || 0,
+                reps_unit: (e as any).reps_unit || 'reps',
+              })))
             }
           }
         }
@@ -294,7 +306,20 @@ export default function SessionSummary() {
                 )
               })}
 
-              {Object.keys(finisherLogsByExercise).length === 0 && (
+              {Object.keys(finisherLogsByExercise).length === 0 && finisherExercises.length > 0 && (
+                <div className="divide-y divide-muted/20">
+                  {finisherExercises.map((ex, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <span className="text-xs text-muted-foreground w-5 shrink-0">{i + 1}</span>
+                      <span className="flex-1">{ex.name}</span>
+                      {ex.target_reps > 0 && (
+                        <span className="text-muted-foreground shrink-0">{ex.target_reps} {ex.reps_unit}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {Object.keys(finisherLogsByExercise).length === 0 && finisherExercises.length === 0 && (
                 <div className="px-4 py-3 text-sm text-muted-foreground">
                   {finisherSession.rounds_completed > 0
                     ? `${finisherSession.rounds_completed} rounds complétés`
