@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,23 +33,25 @@ interface SessionLog {
 export default function Statistics() {
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { user } = useAuth()
   const [sessions, setSessions] = useState<SessionLog[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
-    if (profile) loadSessions()
-  }, [profile])
+    if (user) loadSessions()
+  }, [user])
 
   const loadSessions = async () => {
-    if (!profile) return
+    if (!user) return
     try {
       const { data: sessionsData } = await supabase
         .from('workout_sessions')
-        .select('id, quest_id, started_at, total_time_seconds, note, quests(title)')
-        .eq('user_id', profile.id)
+        .select('id, quest_id, started_at, total_time_seconds, note, quests(title, workout_type)')
+        .eq('user_id', user.id)
         .eq('is_completed', true)
+        .eq('workout_type', 'strength')
         .order('started_at', { ascending: false })
         .limit(50)
 
@@ -110,14 +113,14 @@ export default function Statistics() {
   }
 
   const handleDelete = async () => {
-    if (!deleteTarget || !profile) return
+    if (!deleteTarget || !user) return
     setIsDeleting(true)
     await supabase.from('exercise_logs').delete().eq('session_id', deleteTarget)
     const { error } = await supabase
       .from('workout_sessions')
       .delete()
       .eq('id', deleteTarget)
-      .eq('user_id', profile.id)
+      .eq('user_id', user.id)
     setIsDeleting(false)
     setDeleteTarget(null)
     if (error) {
