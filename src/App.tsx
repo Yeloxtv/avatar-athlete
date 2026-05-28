@@ -64,7 +64,7 @@ function ProtectedLayout() {
           <Route path="/campaign/:slug?" element={<Campaign />} />
           <Route path="/train/:questId" element={<Training />} />
           <Route path="/statistics" element={<Statistics />} />
-          <Route path="/training/:questId/summary" element={<SessionSummary />} />
+          <Route path="/train/:questId/summary" element={<SessionSummary />} />
           <Route path="/statistics/session/:sessionId" element={<SessionDetail />} />
           <Route path="/exercises" element={<Exercises />} />
           <Route path="/my-program" element={<MyProgram />} />
