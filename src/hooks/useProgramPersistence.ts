@@ -207,13 +207,12 @@ export function useProgramPersistence() {
           await supabase.from('quest_exercises').delete().eq('quest_id', questId)
         }
 
-        // Upsert exercises
+        // Insert new + update existing exercises separately to avoid null id constraint
         if (validExercises.length > 0) {
-          const exercisePayload = validExercises.map((ex, idx) => ({
-            ...(ex.id ? { id: ex.id } : {}),
+          const toInsert = validExercises.filter(ex => !ex.id).map((ex, idx) => ({
             quest_id: questId,
             name: ex.name,
-            order_index: idx + 1,
+            order_index: validExercises.indexOf(ex) + 1,
             sets_count: ex.sets_count,
             target_reps: ex.target_reps,
             target_weight: ex.target_weight ?? null,
@@ -221,10 +220,26 @@ export function useProgramPersistence() {
             notes: null,
             ...(ex.global_exercise_id ? { exercise_id: ex.global_exercise_id } : {}),
           }))
-          const { error } = await supabase
-            .from('quest_exercises')
-            .upsert(exercisePayload, { onConflict: 'id' })
-          if (error) throw error
+          const toUpdate = validExercises.filter(ex => !!ex.id).map((ex, _) => ({
+            id: ex.id!,
+            quest_id: questId,
+            name: ex.name,
+            order_index: validExercises.indexOf(ex) + 1,
+            sets_count: ex.sets_count,
+            target_reps: ex.target_reps,
+            target_weight: ex.target_weight ?? null,
+            rest_seconds: ex.rest_seconds,
+            notes: null,
+            ...(ex.global_exercise_id ? { exercise_id: ex.global_exercise_id } : {}),
+          }))
+          if (toInsert.length > 0) {
+            const { error } = await supabase.from('quest_exercises').insert(toInsert)
+            if (error) throw error
+          }
+          if (toUpdate.length > 0) {
+            const { error } = await supabase.from('quest_exercises').upsert(toUpdate, { onConflict: 'id' })
+            if (error) throw error
+          }
         }
 
         // Save finisher quest if defined
