@@ -256,6 +256,8 @@ export default function Training() {
         await supabase
           .from('workout_sessions')
           .update({
+            is_completed: true,
+            ended_at: new Date().toISOString(),
             total_time_seconds: workoutSession.time,
             rounds_completed: workoutSession.rounds,
           })
@@ -287,7 +289,7 @@ export default function Training() {
       } catch { /* silencieux */ }
     }
 
-    navigate(`/training/${questId}/summary`)
+    navigate(`/train/${questId}/summary`)
   }
 
   const formatTime = (seconds: number) => {
@@ -357,7 +359,7 @@ export default function Training() {
                 <Button
                   onClick={() => {
                     setShowFinisherDialog(false)
-                    navigate(`/training/${finisherQuestId}`)
+                    navigate(`/train/${finisherQuestId}`)
                   }}
                 >
                   Lancer le finisher
@@ -366,7 +368,7 @@ export default function Training() {
                   variant="outline"
                   onClick={() => {
                     setShowFinisherDialog(false)
-                    navigate(`/training/${questId}/summary`)
+                    navigate(`/train/${questId}/summary`)
                   }}
                 >
                   Passer, aller au résumé
