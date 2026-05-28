@@ -30,8 +30,10 @@ interface ExerciseLog {
 
 interface FinisherData {
   title: string
+  workout_type: string
   total_time_seconds: number
   rounds_completed: number
+  exercises: Array<{ name: string; target_reps: number }>
 }
 
 interface SessionDetail {
@@ -130,10 +132,23 @@ const renderSessionPrintHtml = (session: SessionDetail, totalVolume: number, fin
 
     ${finisher ? `
     <h2>Finisher — ${escapeHtml(finisher.title)}</h2>
+    <p class="muted" style="margin:-8px 0 12px;font-size:13px">${escapeHtml(finisher.workout_type.toUpperCase())}</p>
     <div class="grid" style="grid-template-columns: repeat(2, 1fr)">
       <div class="box"><div class="metric">${escapeHtml(formatPrintTime(finisher.total_time_seconds))}</div><div class="muted">Duree</div></div>
       <div class="box"><div class="metric">${escapeHtml(finisher.rounds_completed)}</div><div class="muted">Tours</div></div>
-    </div>` : ''}
+    </div>
+    ${finisher.exercises.length > 0 ? `
+    <table style="margin-top:8px">
+      <thead><tr><th>#</th><th>Exercice</th><th style="text-align:right">Reps cibles</th></tr></thead>
+      <tbody>
+        ${finisher.exercises.map((ex, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${escapeHtml(ex.name)}</td>
+            <td style="text-align:right">${ex.target_reps > 0 ? ex.target_reps : '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>` : ''}` : ''}
 
     <h2>Detail des exercices</h2>
     ${session.exercises.length === 0
@@ -245,7 +260,7 @@ export default function SessionDetail() {
       if (questMeta?.day_of_week != null && questMeta?.campaign_id) {
         const { data: finisherQuest } = await supabase
           .from('quests')
-          .select('id, title')
+          .select('id, title, workout_type')
           .eq('campaign_id', questMeta.campaign_id)
           .eq('day_of_week', questMeta.day_of_week)
           .in('workout_type', ['amrap', 'emom', 'tabata'])
@@ -257,23 +272,35 @@ export default function SessionDetail() {
           const windowStart = new Date(muscuEnd.getTime() - 10 * 60 * 1000)
           const windowEnd = new Date(muscuEnd.getTime() + 4 * 60 * 60 * 1000)
 
-          const { data: fSession } = await supabase
-            .from('workout_sessions')
-            .select('total_time_seconds, rounds_completed')
-            .eq('user_id', user.id)
-            .eq('quest_id', finisherQuest.id)
-            .eq('is_completed', true)
-            .gte('started_at', windowStart.toISOString())
-            .lte('started_at', windowEnd.toISOString())
-            .order('ended_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
+          const [fSessionResult, fExercisesResult] = await Promise.all([
+            supabase
+              .from('workout_sessions')
+              .select('total_time_seconds, rounds_completed')
+              .eq('user_id', user.id)
+              .eq('quest_id', finisherQuest.id)
+              .eq('is_completed', true)
+              .gte('started_at', windowStart.toISOString())
+              .lte('started_at', windowEnd.toISOString())
+              .order('ended_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('quest_exercises')
+              .select('name, target_reps, order_index')
+              .eq('quest_id', finisherQuest.id)
+              .order('order_index'),
+          ])
 
-          if (fSession) {
+          if (fSessionResult.data) {
             setFinisher({
               title: finisherQuest.title,
-              total_time_seconds: fSession.total_time_seconds || 0,
-              rounds_completed: fSession.rounds_completed || 0,
+              workout_type: (finisherQuest as any).workout_type,
+              total_time_seconds: fSessionResult.data.total_time_seconds || 0,
+              rounds_completed: fSessionResult.data.rounds_completed || 0,
+              exercises: (fExercisesResult.data || []).map(e => ({
+                name: e.name,
+                target_reps: e.target_reps || 0,
+              })),
             })
           }
         }
@@ -470,8 +497,11 @@ export default function SessionDetail() {
                   <Zap className="w-4 h-4" />
                   Finisher — {finisher.title}
                 </CardTitle>
+                <p className="text-xs font-medium uppercase tracking-widest text-orange-400/70 mt-0.5">
+                  {finisher.workout_type.toUpperCase()}
+                </p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div className="bg-muted/20 rounded-lg p-3">
                     <div className="font-bold">{formatTime(finisher.total_time_seconds)}</div>
@@ -482,6 +512,19 @@ export default function SessionDetail() {
                     <div className="text-xs text-muted-foreground">Tours</div>
                   </div>
                 </div>
+                {finisher.exercises.length > 0 && (
+                  <div className="divide-y divide-muted/20">
+                    {finisher.exercises.map((ex, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 text-sm">
+                        <span className="text-muted-foreground w-5 shrink-0">{i + 1}</span>
+                        <span className="flex-1">{ex.name}</span>
+                        {ex.target_reps > 0 && (
+                          <span className="text-muted-foreground shrink-0">{ex.target_reps} reps</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
