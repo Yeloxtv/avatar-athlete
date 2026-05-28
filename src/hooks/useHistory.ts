@@ -67,9 +67,15 @@ export function useHistory() {
 
       if (questsError) throw questsError
 
-      // Récupérer les sessions pour chaque quête
+      const FINISHER_TYPES = ['amrap', 'emom', 'tabata']
+
+      // Récupérer les sessions pour chaque quête (finishers exclus — ils apparaissent dans le récap muscu)
+      const mainQuests = (userQuests || []).filter(
+        (uq: any) => !FINISHER_TYPES.includes(uq.quests?.workout_type)
+      )
+
       const questsWithSessions = await Promise.all(
-        (userQuests || []).map(async (uq: any) => {
+        mainQuests.map(async (uq: any) => {
           const { data: session } = await supabase
             .from('workout_sessions')
             .select('*')
@@ -96,10 +102,10 @@ export function useHistory() {
 
       setCompletedQuests(questsWithSessions)
 
-      // Grouper les campagnes complétées
+      // Grouper les campagnes complétées (finishers exclus)
       const campaignMap = new Map<string, CompletedCampaign>()
-      
-      userQuests?.forEach((uq: any) => {
+
+      mainQuests.forEach((uq: any) => {
         const campaignId = uq.quests.campaign_id
         const campaignSlug = uq.quests.campaigns.slug
         const campaignTitle = uq.quests.campaigns.title
