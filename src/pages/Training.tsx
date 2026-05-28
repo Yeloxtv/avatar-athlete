@@ -123,6 +123,8 @@ export default function Training() {
 
         if (newSession) {
           workoutSession.setSession(newSession)
+          workoutSession.setTime(0)
+          workoutSession.setWorkTime(0)
           startLiveSession({
             sessionId: newSession.id,
             questId: questId!,
