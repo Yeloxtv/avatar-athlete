@@ -36,7 +36,7 @@ export function useProgramPersistence() {
           id, title,
           quests(
             id, title, day_of_week, workout_type, total_minutes,
-            quest_exercises(id, name, sets_count, target_reps, target_weight, rest_seconds, order_index, exercise_id)
+            quest_exercises(id, name, sets_count, target_reps, reps_unit, target_weight, rest_seconds, order_index, exercise_id)
           )
         `)
         .eq('owner_user_id', profileId)
@@ -66,6 +66,7 @@ export function useProgramPersistence() {
             .map((ex: any) => ({
               name: ex.name,
               target_reps: ex.target_reps ?? 10,
+              reps_unit: ex.reps_unit ?? 'reps',
               global_exercise_id: ex.exercise_id ?? null,
             })),
         }
