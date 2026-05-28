@@ -45,6 +45,7 @@ export interface QuestExercise {
   order_index: number
   name: string
   target_reps: number
+  reps_unit?: string
   notes?: string
 }
 

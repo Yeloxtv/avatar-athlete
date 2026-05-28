@@ -84,7 +84,7 @@ export default function AmrapWorkoutInterface({
             <span className="text-xs text-muted-foreground w-5 shrink-0">{i + 1}</span>
             <span className="text-sm font-medium">{exercise.name}</span>
             {exercise.target_reps ? (
-              <span className="ml-auto text-xs text-muted-foreground shrink-0">{exercise.target_reps} reps</span>
+              <span className="ml-auto text-xs text-muted-foreground shrink-0">{exercise.target_reps} {exercise.reps_unit ?? 'reps'}</span>
             ) : null}
           </div>
         ))}

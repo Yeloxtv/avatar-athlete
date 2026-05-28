@@ -86,6 +86,7 @@ export default function Training() {
             id,
             name,
             target_reps,
+            reps_unit,
             order_index,
             notes,
             sets_count,
