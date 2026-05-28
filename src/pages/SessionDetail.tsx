@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
 } from '@/components/ui/sheet'
 import { toast } from '@/hooks/use-toast'
-import { ArrowLeft, Clock, Dumbbell, FileText, Download, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Clock, Dumbbell, FileText, Download, Pencil, Trash2, Zap } from 'lucide-react'
 
 interface ExerciseLog {
   exercise_id: string
@@ -27,10 +28,18 @@ interface ExerciseLog {
   volume: number
 }
 
+interface FinisherData {
+  title: string
+  total_time_seconds: number
+  rounds_completed: number
+}
+
 interface SessionDetail {
   id: string
+  quest_id: string
   quest_title: string
   started_at: string
+  ended_at: string | null
   total_time_seconds: number
   note: string | null
   exercises: ExerciseLog[]
@@ -71,7 +80,7 @@ const formatPrintTime = (seconds: number) => `${Math.floor(seconds / 60)} min`
 
 const formatPrintVolume = (kg: number) => kg >= 1000 ? `${(kg / 1000).toFixed(1)}t` : `${Math.round(kg)} kg`
 
-const renderSessionPrintHtml = (session: SessionDetail, totalVolume: number): string => `
+const renderSessionPrintHtml = (session: SessionDetail, totalVolume: number, finisher: FinisherData | null): string => `
 <!doctype html>
 <html lang="fr">
   <head>
@@ -119,6 +128,13 @@ const renderSessionPrintHtml = (session: SessionDetail, totalVolume: number): st
 
     ${session.note ? `<div class="box"><strong>Note de seance</strong><p class="muted">${escapeHtml(session.note)}</p></div>` : ''}
 
+    ${finisher ? `
+    <h2>Finisher — ${escapeHtml(finisher.title)}</h2>
+    <div class="grid" style="grid-template-columns: repeat(2, 1fr)">
+      <div class="box"><div class="metric">${escapeHtml(formatPrintTime(finisher.total_time_seconds))}</div><div class="muted">Duree</div></div>
+      <div class="box"><div class="metric">${escapeHtml(finisher.rounds_completed)}</div><div class="muted">Tours</div></div>
+    </div>` : ''}
+
     <h2>Detail des exercices</h2>
     ${session.exercises.length === 0
       ? '<p class="muted">Aucun log enregistre pour cette seance</p>'
@@ -149,7 +165,9 @@ export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { profile } = useProfile()
+  const { user } = useAuth()
   const [session, setSession] = useState<SessionDetail | null>(null)
+  const [finisher, setFinisher] = useState<FinisherData | null>(null)
   const [loading, setLoading] = useState(true)
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -164,17 +182,17 @@ export default function SessionDetail() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
-    if (profile && sessionId) loadSession()
-  }, [profile, sessionId])
+    if (user && sessionId) loadSession()
+  }, [user, sessionId])
 
   const loadSession = async () => {
-    if (!profile || !sessionId) return
+    if (!user || !sessionId) return
     try {
       const { data: s } = await supabase
         .from('workout_sessions')
-        .select('id, started_at, total_time_seconds, note, quests(title)')
+        .select('id, quest_id, started_at, ended_at, total_time_seconds, note, quests(title, day_of_week, campaign_id)')
         .eq('id', sessionId)
-        .eq('user_id', profile.id)
+        .eq('user_id', user.id)
         .single()
 
       if (!s) { navigate('/statistics'); return }
@@ -213,12 +231,53 @@ export default function SessionDetail() {
 
       setSession({
         id: s.id,
+        quest_id: s.quest_id,
         quest_title: (s.quests as any)?.title || 'Séance',
         started_at: s.started_at,
+        ended_at: (s as any).ended_at || null,
         total_time_seconds: s.total_time_seconds || 0,
         note: (s as any).note || null,
         exercises,
       })
+
+      // Chercher le finisher associé (même campaign + day_of_week, dans les 4h après la fin)
+      const questMeta = s.quests as any
+      if (questMeta?.day_of_week != null && questMeta?.campaign_id) {
+        const { data: finisherQuest } = await supabase
+          .from('quests')
+          .select('id, title')
+          .eq('campaign_id', questMeta.campaign_id)
+          .eq('day_of_week', questMeta.day_of_week)
+          .in('workout_type', ['amrap', 'emom', 'tabata'])
+          .limit(1)
+          .maybeSingle()
+
+        if (finisherQuest) {
+          const muscuEnd = new Date((s as any).ended_at || s.started_at)
+          const windowStart = new Date(muscuEnd.getTime() - 10 * 60 * 1000)
+          const windowEnd = new Date(muscuEnd.getTime() + 4 * 60 * 60 * 1000)
+
+          const { data: fSession } = await supabase
+            .from('workout_sessions')
+            .select('total_time_seconds, rounds_completed')
+            .eq('user_id', user.id)
+            .eq('quest_id', finisherQuest.id)
+            .eq('is_completed', true)
+            .gte('started_at', windowStart.toISOString())
+            .lte('started_at', windowEnd.toISOString())
+            .order('ended_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (fSession) {
+            setFinisher({
+              title: finisherQuest.title,
+              total_time_seconds: fSession.total_time_seconds || 0,
+              rounds_completed: fSession.rounds_completed || 0,
+            })
+          }
+        }
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -234,14 +293,14 @@ export default function SessionDetail() {
   }
 
   const handleSaveEdit = async () => {
-    if (!session || !profile) return
+    if (!session || !user) return
     setIsSaving(true)
     const newSeconds = Math.max(0, parseInt(editMinutes || '0', 10)) * 60
     const { error } = await supabase
       .from('workout_sessions')
       .update({ note: editNote || null, total_time_seconds: newSeconds })
       .eq('id', session.id)
-      .eq('user_id', profile.id)
+      .eq('user_id', user.id)
     setIsSaving(false)
     if (error) {
       toast({ title: 'Erreur', description: 'Impossible de sauvegarder.', variant: 'destructive' })
@@ -253,15 +312,14 @@ export default function SessionDetail() {
   }
 
   const handleDelete = async () => {
-    if (!session || !profile) return
+    if (!session || !user) return
     setIsDeleting(true)
-    // Supprimer les logs liés puis la session
     await supabase.from('exercise_logs').delete().eq('session_id', session.id)
     const { error } = await supabase
       .from('workout_sessions')
       .delete()
       .eq('id', session.id)
-      .eq('user_id', profile.id)
+      .eq('user_id', user.id)
     setIsDeleting(false)
     if (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer.', variant: 'destructive' })
@@ -274,7 +332,7 @@ export default function SessionDetail() {
   const handlePrint = () => {
     if (!session) return
 
-    const html = renderSessionPrintHtml(session, totalVolume)
+    const html = renderSessionPrintHtml(session, totalVolume, finisher)
     const printWindow = window.open('', '_blank')
 
     if (!printWindow) {
@@ -400,6 +458,30 @@ export default function SessionDetail() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground italic">"{session.note}"</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Finisher */}
+          {finisher && (
+            <Card className="border-orange-400/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2 text-orange-400">
+                  <Zap className="w-4 h-4" />
+                  Finisher — {finisher.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div className="bg-muted/20 rounded-lg p-3">
+                    <div className="font-bold">{formatTime(finisher.total_time_seconds)}</div>
+                    <div className="text-xs text-muted-foreground">Durée</div>
+                  </div>
+                  <div className="bg-muted/20 rounded-lg p-3">
+                    <div className="font-bold">{finisher.rounds_completed}</div>
+                    <div className="text-xs text-muted-foreground">Tours</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
