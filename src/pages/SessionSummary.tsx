@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useProfile } from '@/hooks/useProfile'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/integrations/supabase/client'
 import { Quest, WorkoutSession } from '@/types/workout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Clock, Dumbbell, Loader2, ChevronDown, ChevronUp, Trophy } from 'lucide-react'
+import { Clock, Dumbbell, Loader2, ChevronDown, ChevronUp, Trophy, Zap } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
   const navigate = useNavigate()
-  const { profile } = useProfile()
   const { user } = useAuth()
 
   const [quest, setQuest] = useState<Quest | null>(null)
@@ -23,6 +21,11 @@ export default function SessionSummary() {
   const [noteSaved, setNoteSaved] = useState(false)
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
   const [exerciseLogs, setExerciseLogs] = useState<any[]>([])
+
+  // Finisher
+  const [finisherSession, setFinisherSession] = useState<any | null>(null)
+  const [finisherLogs, setFinisherLogs] = useState<any[]>([])
+  const [expandedFinisherExercise, setExpandedFinisherExercise] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -39,12 +42,14 @@ export default function SessionSummary() {
         const { data: sessionData, error: sessionError } = await supabase
           .from('workout_sessions')
           .select('*')
-          .eq('user_id', user!.id)
+          .eq('user_id', user.id)
           .eq('quest_id', questId)
-          .order('created_at', { ascending: false })
+          .eq('is_completed', true)
+          .order('ended_at', { ascending: false })
           .limit(1)
-          .single()
+          .maybeSingle()
         if (sessionError) throw sessionError
+        if (!sessionData) throw new Error('Session introuvable')
         setSession(sessionData)
         setNote((sessionData as any).note || '')
 
@@ -54,6 +59,49 @@ export default function SessionSummary() {
           .eq('session_id', sessionData.id)
           .order('set_number', { ascending: true })
         setExerciseLogs(logs || [])
+
+        // Chercher le finisher du même jour dans la même campagne
+        if (questData.day_of_week != null && questData.campaign_id) {
+          const { data: finisherQuest } = await supabase
+            .from('quests')
+            .select('id, title')
+            .eq('campaign_id', questData.campaign_id)
+            .eq('day_of_week', questData.day_of_week)
+            .in('workout_type', ['amrap', 'emom', 'tabata'])
+            .limit(1)
+            .maybeSingle()
+
+          if (finisherQuest) {
+            // Récupérer la session finisher la plus récente (même jour que la séance principale)
+            const sessionDate = new Date(sessionData.ended_at || sessionData.started_at)
+            const dayStart = new Date(sessionDate)
+            dayStart.setHours(0, 0, 0, 0)
+            const dayEnd = new Date(sessionDate)
+            dayEnd.setHours(23, 59, 59, 999)
+
+            const { data: fSession } = await supabase
+              .from('workout_sessions')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('quest_id', finisherQuest.id)
+              .eq('is_completed', true)
+              .gte('started_at', dayStart.toISOString())
+              .lte('started_at', dayEnd.toISOString())
+              .order('ended_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (fSession) {
+              setFinisherSession({ ...fSession, title: finisherQuest.title })
+              const { data: fLogs } = await supabase
+                .from('exercise_logs')
+                .select('*')
+                .eq('session_id', fSession.id)
+                .order('set_number', { ascending: true })
+              setFinisherLogs(fLogs || [])
+            }
+          }
+        }
       } catch (error) {
         console.error(error)
         toast({ title: 'Erreur', description: 'Impossible de charger la séance', variant: 'destructive' })
@@ -80,6 +128,14 @@ export default function SessionSummary() {
     return `${mins}min${secs > 0 ? ` ${secs}s` : ''}`
   }
 
+  const groupLogsByExercise = (logs: any[]) =>
+    logs.reduce<Record<string, any[]>>((acc, log) => {
+      const key = log.exercise_name || log.exercise_id || 'unknown'
+      if (!acc[key]) acc[key] = []
+      acc[key].push(log)
+      return acc
+    }, {})
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -99,14 +155,10 @@ export default function SessionSummary() {
 
   const totalSets = exerciseLogs.length
   const totalVolume = exerciseLogs.reduce((s, l) => s + (l.reps_completed * (Number(l.weight_used) || 0)), 0)
+  const logsByExercise = groupLogsByExercise(exerciseLogs)
 
-  // Grouper les logs par exercise_id pour l'affichage
-  const logsByExercise = exerciseLogs.reduce<Record<string, any[]>>((acc, log) => {
-    const key = log.quest_exercise_id || log.exercise_id || 'unknown'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(log)
-    return acc
-  }, {})
+  const finisherLogsByExercise = groupLogsByExercise(finisherLogs)
+  const finisherTotalReps = finisherLogs.reduce((s, l) => s + (l.reps_completed || 0), 0)
 
   return (
     <div className="min-h-screen bg-background container mx-auto px-4 py-6 space-y-5">
@@ -145,14 +197,14 @@ export default function SessionSummary() {
         </Card>
       </div>
 
-      {/* EXERCICES */}
+      {/* EXERCICES MUSCULATION */}
       {Object.keys(logsByExercise).length > 0 && (
         <Card>
           <CardContent className="p-0">
             {Object.entries(logsByExercise).map(([key, logs], i) => {
-              const exName = logs[0]?.exercise_name || logs[0]?.name || `Exercice ${i + 1}`
-              const bestWeight = Math.max(...logs.map(l => Number(l.weight_used) || 0))
-              const totalReps = logs.reduce((s, l) => s + (l.reps_completed || 0), 0)
+              const exName = logs[0]?.exercise_name || `Exercice ${i + 1}`
+              const bestWeight = Math.max(...logs.map((l: any) => Number(l.weight_used) || 0))
+              const totalReps = logs.reduce((s: number, l: any) => s + (l.reps_completed || 0), 0)
               return (
                 <div key={key} className={i > 0 ? 'border-t border-muted/20' : ''}>
                   <button
@@ -172,7 +224,7 @@ export default function SessionSummary() {
                   </button>
                   {expandedExercise === key && (
                     <div className="px-4 pb-3 space-y-1 border-t border-muted/20 pt-2">
-                      {logs.map((log, j) => (
+                      {logs.map((log: any, j: number) => (
                         <div key={j} className="flex items-center justify-between text-sm py-0.5">
                           <span className="text-muted-foreground">Série {log.set_number ?? j + 1}</span>
                           <span className="font-medium">
@@ -187,6 +239,73 @@ export default function SessionSummary() {
             })}
           </CardContent>
         </Card>
+      )}
+
+      {/* FINISHER */}
+      {finisherSession && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <Zap className="w-4 h-4 text-orange-400" />
+            <span className="text-sm font-bold text-orange-400 uppercase tracking-wide">Finisher</span>
+            <span className="text-xs text-muted-foreground">{finisherSession.title}</span>
+          </div>
+          <Card className="border-orange-400/30">
+            <CardContent className="p-0">
+              {/* Stats finisher */}
+              <div className="grid grid-cols-2 gap-px bg-muted/20 border-b border-muted/20">
+                <div className="p-3 text-center bg-background">
+                  <div className="font-bold text-sm">{formatTime(finisherSession.total_time_seconds || 0)}</div>
+                  <div className="text-xs text-muted-foreground">Durée</div>
+                </div>
+                <div className="p-3 text-center bg-background">
+                  <div className="font-bold text-sm">{finisherSession.rounds_completed ?? '—'} rounds</div>
+                  <div className="text-xs text-muted-foreground">{finisherTotalReps > 0 ? `${finisherTotalReps} reps total` : 'Complété'}</div>
+                </div>
+              </div>
+
+              {/* Exercices finisher */}
+              {Object.entries(finisherLogsByExercise).map(([key, logs], i) => {
+                const exName = (logs as any[])[0]?.exercise_name || `Exercice ${i + 1}`
+                const totalReps = (logs as any[]).reduce((s, l) => s + (l.reps_completed || 0), 0)
+                return (
+                  <div key={key} className={i > 0 ? 'border-t border-muted/20' : ''}>
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/20 transition-colors"
+                      onClick={() => setExpandedFinisherExercise(expandedFinisherExercise === key ? null : key)}
+                    >
+                      <div>
+                        <div className="font-medium text-sm">{exName}</div>
+                        <div className="text-xs text-muted-foreground">{totalReps} reps total</div>
+                      </div>
+                      {expandedFinisherExercise === key
+                        ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+                        : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                      }
+                    </button>
+                    {expandedFinisherExercise === key && (
+                      <div className="px-4 pb-3 space-y-1 border-t border-muted/20 pt-2">
+                        {(logs as any[]).map((log, j) => (
+                          <div key={j} className="flex items-center justify-between text-sm py-0.5">
+                            <span className="text-muted-foreground">Série {log.set_number ?? j + 1}</span>
+                            <span className="font-medium">{log.reps_completed} reps</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {Object.keys(finisherLogsByExercise).length === 0 && (
+                <div className="px-4 py-3 text-sm text-muted-foreground">
+                  {finisherSession.rounds_completed > 0
+                    ? `${finisherSession.rounds_completed} rounds complétés`
+                    : 'Finisher complété'}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* NOTE */}
