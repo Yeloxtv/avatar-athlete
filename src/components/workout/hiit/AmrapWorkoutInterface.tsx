@@ -1,9 +1,6 @@
 import { useState } from 'react'
-import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/integrations/supabase/client'
 import { Quest, QuestExercise, WorkoutSession } from '@/types/workout'
 import { Button } from '@/components/ui/button'
-import { toast } from '@/hooks/use-toast'
 import { Play, Pause, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -21,7 +18,6 @@ interface AmrapWorkoutInterfaceProps {
 
 export default function AmrapWorkoutInterface({
   quest,
-  session,
   time,
   isRunning,
   currentRound,
@@ -30,9 +26,7 @@ export default function AmrapWorkoutInterface({
   onAddRound,
   onFinishWorkout,
 }: AmrapWorkoutInterfaceProps) {
-  const { user } = useAuth()
-  const [showSummary, setShowSummary] = useState(false)
-  const [isValidating, setIsValidating] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -43,51 +37,6 @@ export default function AmrapWorkoutInterface({
   const timeRemaining = quest.total_minutes
     ? Math.max(quest.total_minutes * 60 - time, 0)
     : null
-
-  const validateWorkout = async () => {
-    if (!quest || !user || !session || isValidating) return
-    setIsValidating(true)
-    setShowSummary(false)
-
-    try {
-      const { error: sessionError } = await supabase
-        .from('workout_sessions')
-        .update({
-          is_completed: true,
-          ended_at: new Date().toISOString(),
-          total_time_seconds: time,
-          rounds_completed: currentRound,
-        })
-        .eq('id', session.id)
-      if (sessionError) throw sessionError
-
-      await supabase.from('user_quests').upsert(
-        { user_id: user.id, quest_id: quest.id, status: 'completed', completed_at: new Date().toISOString() },
-        { onConflict: 'user_id,quest_id' }
-      )
-
-      const { data: nextQuest } = await supabase
-        .from('quests')
-        .select('id')
-        .eq('campaign_id', quest.campaign_id)
-        .eq('order_index', quest.order_index + 1)
-        .maybeSingle()
-
-      if (nextQuest) {
-        await supabase.from('user_quests').upsert(
-          { user_id: user.id, quest_id: nextQuest.id, status: 'available' },
-          { onConflict: 'user_id,quest_id' }
-        )
-      }
-
-      onFinishWorkout()
-    } catch (error) {
-      console.error('Erreur validation AMRAP:', error)
-      toast({ title: 'Erreur', description: "Impossible de valider la séance", variant: 'destructive' })
-    } finally {
-      setIsValidating(false)
-    }
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col px-4 py-6 gap-5">
@@ -124,7 +73,7 @@ export default function AmrapWorkoutInterface({
         disabled={!isRunning}
         className="flex items-center justify-center gap-3 w-full rounded-2xl bg-accent text-accent-foreground h-20 text-2xl font-black disabled:opacity-40 active:scale-95 transition-transform select-none"
       >
-        <Plus className="w-8 h-8 strokeWidth-3" />
+        <Plus className="w-8 h-8" />
         1 TOUR
       </button>
 
@@ -151,7 +100,7 @@ export default function AmrapWorkoutInterface({
           {isRunning ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Démarrer</>}
         </Button>
         <Button
-          onClick={() => setShowSummary(true)}
+          onClick={() => setShowConfirm(true)}
           variant="destructive"
           className="flex-1 h-12"
         >
@@ -160,19 +109,19 @@ export default function AmrapWorkoutInterface({
       </div>
 
       {/* DIALOG CONFIRMATION */}
-      <Dialog open={showSummary} onOpenChange={setShowSummary}>
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
         <DialogContent className="max-w-sm mx-2">
           <DialogHeader>
-            <DialogTitle className="text-center text-lg">Finir l'AMRAP ?</DialogTitle>
+            <DialogTitle className="text-center">Finir le finisher ?</DialogTitle>
             <DialogDescription className="text-center text-sm">
               {currentRound} tour{currentRound > 1 ? 's' : ''} · {formatTime(time)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 mt-2">
-            <Button onClick={validateWorkout} className="w-full h-12" disabled={isValidating}>
-              {isValidating ? '⏳ Sauvegarde...' : '✓ Valider la séance'}
+            <Button onClick={() => { setShowConfirm(false); onFinishWorkout() }} className="w-full h-12">
+              ✓ Valider et voir le récap
             </Button>
-            <Button onClick={() => setShowSummary(false)} variant="outline" className="w-full h-12" disabled={isValidating}>
+            <Button onClick={() => setShowConfirm(false)} variant="outline" className="w-full h-12">
               Continuer
             </Button>
           </div>

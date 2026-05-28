@@ -30,6 +30,8 @@ export default function Training() {
   const [showSessionSummary, setShowSessionSummary] = useState(false)
   const [finisherQuestId, setFinisherQuestId] = useState<string | null>(null)
   const [showFinisherDialog, setShowFinisherDialog] = useState(false)
+  // Id de la quête muscu originale — pour rediriger vers son récap après le finisher
+  const [originQuestId, setOriginQuestId] = useState<string | null>(null)
 
   // Détection du type d'entraînement
   const isStrengthWorkout = quest?.workout_type === 'strength'
@@ -262,7 +264,7 @@ export default function Training() {
             is_completed: true,
             ended_at: new Date().toISOString(),
             total_time_seconds: workoutSession.time,
-            rounds_completed: workoutSession.rounds,
+            rounds_completed: hiitTimer.currentRound,
           })
           .eq('id', workoutSession.session.id)
       } catch (error) {
@@ -285,6 +287,7 @@ export default function Training() {
           .maybeSingle()
 
         if (finisher?.id) {
+          setOriginQuestId(questId!)
           setFinisherQuestId(finisher.id)
           setShowFinisherDialog(true)
           return
@@ -292,7 +295,9 @@ export default function Training() {
       } catch { /* silencieux */ }
     }
 
-    navigate(`/train/${questId}/summary`)
+    // Si c'est un finisher (AMRAP/HIIT), retourner au récap de la séance muscu originale
+    const summaryId = originQuestId ?? questId
+    navigate(`/train/${summaryId}/summary`)
   }
 
   const formatTime = (seconds: number) => {
