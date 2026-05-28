@@ -72,12 +72,10 @@ export default function SessionSummary() {
             .maybeSingle()
 
           if (finisherQuest) {
-            // Récupérer la session finisher la plus récente (même jour que la séance principale)
-            const sessionDate = new Date(sessionData.ended_at || sessionData.started_at)
-            const dayStart = new Date(sessionDate)
-            dayStart.setHours(0, 0, 0, 0)
-            const dayEnd = new Date(sessionDate)
-            dayEnd.setHours(23, 59, 59, 999)
+            // Chercher le finisher démarré dans les 4h qui suivent la fin de la séance muscu
+            const muscuEnd = new Date(sessionData.ended_at || sessionData.started_at)
+            const windowStart = new Date(muscuEnd.getTime() - 10 * 60 * 1000)  // 10 min avant (marge)
+            const windowEnd = new Date(muscuEnd.getTime() + 4 * 60 * 60 * 1000) // 4h après
 
             const { data: fSession } = await supabase
               .from('workout_sessions')
@@ -85,8 +83,8 @@ export default function SessionSummary() {
               .eq('user_id', user.id)
               .eq('quest_id', finisherQuest.id)
               .eq('is_completed', true)
-              .gte('started_at', dayStart.toISOString())
-              .lte('started_at', dayEnd.toISOString())
+              .gte('started_at', windowStart.toISOString())
+              .lte('started_at', windowEnd.toISOString())
               .order('ended_at', { ascending: false })
               .limit(1)
               .maybeSingle()
