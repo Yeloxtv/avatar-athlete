@@ -14,6 +14,7 @@ import { useHiitTimer } from '@/hooks/useHiitTimer'
 import WorkoutHeader from '@/components/workout/shared/WorkoutHeader'
 import StrengthWorkoutInterface from '@/components/workout/strength/StrengthWorkoutInterface'
 import HiitWorkoutInterface from '@/components/workout/hiit/HiitWorkoutInterface'
+import AmrapWorkoutInterface from '@/components/workout/hiit/AmrapWorkoutInterface'
 
 
 export default function Training() {
@@ -381,14 +382,31 @@ export default function Training() {
     )
   }
 
-  // ⚡ Interface HIIT
+  // ⚡ Interface AMRAP dédiée
+  if (quest.workout_type === 'amrap') {
+    return (
+      <AmrapWorkoutInterface
+        quest={quest}
+        session={workoutSession.session}
+        time={workoutSession.time}
+        isRunning={workoutSession.isRunning}
+        currentRound={hiitTimer.currentRound}
+        onStart={startWorkout}
+        onPause={workoutSession.pauseWorkout}
+        onAddRound={hiitTimer.addRound}
+        onFinishWorkout={finishWorkout}
+      />
+    )
+  }
+
+  // ⚡ Interface HIIT (tabata, emom, circuit…)
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        <WorkoutHeader 
-          quest={quest} 
-          onBack={() => navigate('/')} 
+
+        <WorkoutHeader
+          quest={quest}
+          onBack={() => navigate('/')}
           showLevelDisplay={true}
         />
 
