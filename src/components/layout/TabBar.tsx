@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { Home, BarChart2, TrendingUp, BookOpen } from 'lucide-react'
+import { Home, BarChart2, TrendingUp, Package } from 'lucide-react'
 
 const tabs = [
   { to: '/', icon: Home, label: 'Accueil' },
   { to: '/statistics', icon: BarChart2, label: 'Séances' },
+  { to: '/collection', icon: Package, label: 'Collection' },
   { to: '/progress', icon: TrendingUp, label: 'Progrès' },
-  { to: '/exercises', icon: BookOpen, label: 'Exercices' },
 ]
 
 export default function TabBar() {

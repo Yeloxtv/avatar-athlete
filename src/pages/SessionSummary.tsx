@@ -6,8 +6,12 @@ import { Quest, WorkoutSession } from '@/types/workout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Clock, Dumbbell, Loader2, ChevronDown, ChevronUp, Trophy, Zap } from 'lucide-react'
+import { Clock, Dumbbell, Loader2, ChevronDown, ChevronUp, Trophy, Zap, Gift } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import { useChestReward } from '@/hooks/useChestReward'
+import { ChestOpeningModal } from '@/components/loot/ChestOpeningModal'
+import { RarityBadge } from '@/components/loot/RarityBadge'
+import { CHEST_EMOJI } from '@/types/loot'
 
 export default function SessionSummary() {
   const { questId } = useParams<{ questId: string }>()
@@ -27,6 +31,10 @@ export default function SessionSummary() {
   const [finisherLogs, setFinisherLogs] = useState<any[]>([])
   const [finisherExercises, setFinisherExercises] = useState<Array<{ name: string; target_reps: number; reps_unit: string }>>([])
   const [expandedFinisherExercise, setExpandedFinisherExercise] = useState<string | null>(null)
+
+  // Loot
+  const { pendingChest, earnChest } = useChestReward()
+  const [showChestModal, setShowChestModal] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -60,6 +68,18 @@ export default function SessionSummary() {
           .eq('session_id', sessionData.id)
           .order('set_number', { ascending: true })
         setExerciseLogs(logs || [])
+
+        // Attribuer un coffre si pas encore fait pour cette session
+        const sessionLogs = logs || []
+        const totalVolume = sessionLogs.reduce((s: number, l: any) => s + (l.reps_completed * (Number(l.weight_used) || 0)), 0)
+        earnChest(sessionData.id, {
+          total_time_seconds: sessionData.total_time_seconds || 0,
+          total_volume: totalVolume,
+          sets_count: sessionLogs.length,
+          has_pr: false,
+          streak: 0,
+          with_finisher: false,
+        })
 
         // Chercher le finisher du même jour dans la même campagne
         if (questData.day_of_week != null && questData.campaign_id) {
@@ -329,6 +349,33 @@ export default function SessionSummary() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* COFFRE GAGNÉ */}
+      {pendingChest && (
+        <Card className="border-accent/40 bg-accent/5">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="text-4xl shrink-0">
+              {CHEST_EMOJI[(pendingChest.chest?.rarity ?? 'common') as any]}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm">{pendingChest.chest?.name ?? 'Coffre'}</div>
+              <RarityBadge rarity={(pendingChest.chest?.rarity ?? 'common') as any} size="sm" className="mt-1" />
+            </div>
+            <Button size="sm" className="shrink-0 gap-1" onClick={() => setShowChestModal(true)}>
+              <Gift className="w-4 h-4" />
+              Ouvrir
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {pendingChest && showChestModal && (
+        <ChestOpeningModal
+          userChest={pendingChest}
+          open={showChestModal}
+          onClose={() => setShowChestModal(false)}
+        />
       )}
 
       {/* NOTE */}

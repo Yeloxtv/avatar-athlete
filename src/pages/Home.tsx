@@ -8,7 +8,11 @@ import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Swords, Target, Gift } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Swords, Target, Gift, Package } from 'lucide-react'
+import { useChestReward } from '@/hooks/useChestReward'
+import { useCollection } from '@/hooks/useCollection'
+import { PlayerCard } from '@/components/profile/PlayerCard'
+import { CHEST_EMOJI } from '@/types/loot'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -41,6 +45,8 @@ export default function Home() {
   const { user } = useAuth()
   const { streak } = useStreak(profile?.id)
   const { dailyQuest } = useDailyQuest(profile?.id)
+  const { pendingChest, loadPendingChest } = useChestReward()
+  const { equipped } = useCollection()
   const [personalProgram, setPersonalProgram] = useState<PersonalProgram | null>(null)
   const [publicCampaigns, setPublicCampaigns] = useState<PublicCampaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,7 +61,7 @@ export default function Home() {
   })()
 
   useEffect(() => {
-    if (profile && user) fetchHomeData()
+    if (profile && user) { fetchHomeData(); loadPendingChest() }
   }, [profile, user])
 
   const fetchHomeData = async () => {
@@ -164,6 +170,18 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* COFFRE EN ATTENTE */}
+      {pendingChest && (
+        <Link to="/collection" className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10 transition-colors">
+          <span className="text-2xl shrink-0">{CHEST_EMOJI[(pendingChest.chest?.rarity ?? 'common') as any]}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold">Coffre à ouvrir !</p>
+            <p className="text-xs text-muted-foreground">{pendingChest.chest?.name ?? 'Coffre'} · Tap pour ouvrir</p>
+          </div>
+          <Gift className="w-4 h-4 text-accent shrink-0" />
+        </Link>
+      )}
 
       {/* QUETE QUOTIDIENNE — masquée en mode autonome (en standby) */}
       {!isAutonomous && <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">

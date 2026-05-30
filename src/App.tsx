@@ -18,6 +18,7 @@ import SessionDetail from "@/pages/SessionDetail";
 import Exercises from "@/pages/Exercises";
 import MyProgram from "@/pages/MyProgram";
 import Progress from "@/pages/Progress";
+import Collection from "@/pages/Collection";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
@@ -69,6 +70,7 @@ function ProtectedLayout() {
           <Route path="/exercises" element={<Exercises />} />
           <Route path="/my-program" element={<MyProgram />} />
           <Route path="/progress" element={<Progress />} />
+          <Route path="/collection" element={<Collection />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
