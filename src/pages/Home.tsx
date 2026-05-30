@@ -61,7 +61,7 @@ export default function Home() {
   })()
 
   useEffect(() => {
-    if (profile && user) { fetchHomeData(); loadPendingChest() }
+    if (profile && user) { fetchHomeData(); loadPendingChest(user.id) }
   }, [profile, user])
 
   const fetchHomeData = async () => {

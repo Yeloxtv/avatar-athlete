@@ -72,7 +72,7 @@ export default function SessionSummary() {
         // Attribuer un coffre si pas encore fait pour cette session
         const sessionLogs = logs || []
         const totalVolume = sessionLogs.reduce((s: number, l: any) => s + (l.reps_completed * (Number(l.weight_used) || 0)), 0)
-        earnChest(sessionData.id, {
+        await earnChest(user.id, sessionData.id, {
           total_time_seconds: sessionData.total_time_seconds || 0,
           total_volume: totalVolume,
           sets_count: sessionLogs.length,

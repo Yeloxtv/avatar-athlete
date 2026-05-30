@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { RarityBadge } from '@/components/loot/RarityBadge'
 import { useChestReward } from '@/hooks/useChestReward'
+import { useAuth } from '@/hooks/useAuth'
 import { UserChest, RewardDefinition, RARITY_COLORS, CHEST_EMOJI } from '@/types/loot'
 
 interface ChestOpeningModalProps {
@@ -16,7 +17,8 @@ type Step = 'closed' | 'opening' | 'revealed'
 
 export function ChestOpeningModal({ userChest, open, onClose }: ChestOpeningModalProps) {
   const navigate = useNavigate()
-  const { openChest, isOpening } = useChestReward()
+  const { user } = useAuth()
+  const { openChest } = useChestReward()
   const [step, setStep] = useState<Step>('closed')
   const [reward, setReward] = useState<RewardDefinition | null>(null)
 
@@ -25,9 +27,9 @@ export function ChestOpeningModal({ userChest, open, onClose }: ChestOpeningModa
   const chestName = userChest.chest?.name ?? 'Coffre'
 
   const handleOpen = async () => {
-    if (isOpening || step !== 'closed') return
+    if (step !== 'closed' || !user?.id) return
     setStep('opening')
-    const result = await openChest(userChest.id)
+    const result = await openChest(user.id, userChest.id)
     if (result) {
       setReward(result)
       setStep('revealed')
