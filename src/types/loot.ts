@@ -17,8 +17,8 @@ export interface UserChest {
   id: string
   user_id: string
   chest_id: string
-  status: 'pending' | 'opened'
-  source_session_id: string | null
+  status: 'locked' | 'unlocked' | 'opened'
+  session_id: string | null
   earned_at: string
   opened_at: string | null
   chest?: ChestDefinition
