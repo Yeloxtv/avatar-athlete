@@ -373,6 +373,7 @@ export default function SessionSummary() {
       {pendingChest && showChestModal && (
         <ChestOpeningModal
           userChest={pendingChest}
+          userId={user.id}
           open={showChestModal}
           onClose={() => setShowChestModal(false)}
         />
