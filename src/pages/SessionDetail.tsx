@@ -342,6 +342,9 @@ export default function SessionDetail() {
   const handleDelete = async () => {
     if (!session || !user) return
     setIsDeleting(true)
+    await supabase.from('user_rewards').delete().eq('source_session_id', session.id)
+    await supabase.from('user_chests').delete().eq('session_id', session.id)
+    await supabase.from('session_rounds').delete().eq('session_id', session.id)
     await supabase.from('exercise_logs').delete().eq('session_id', session.id)
     const { error } = await supabase
       .from('workout_sessions')
