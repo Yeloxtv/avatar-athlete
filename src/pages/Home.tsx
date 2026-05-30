@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Swords, Target, Gift, Package } from 'lucide-react'
+import { Dumbbell, MapPin, ChevronRight, Calendar, Flame, Gift } from 'lucide-react'
 import { useChestReward } from '@/hooks/useChestReward'
 import { useCollection } from '@/hooks/useCollection'
 import { PlayerCard } from '@/components/profile/PlayerCard'
@@ -187,8 +187,8 @@ const { pendingChest, loadPendingChest } = useChestReward()
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold flex items-center gap-2">
-              <Swords className="w-4 h-4 text-accent" />
-              Programme
+              <Dumbbell className="w-4 h-4 text-accent" />
+              Mon programme
             </h2>
             <Link to={`/campaign/${personalProgram.slug}`} className="text-xs text-accent flex items-center gap-1">
               Voir tout <ChevronRight className="w-3 h-3" />
@@ -237,7 +237,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <p className="text-xs text-accent uppercase tracking-widest font-medium mb-1">
-                      {activeDayIndex === todayIndex ? 'Quête du jour' : DAYS[activeDayIndex]}
+                      {activeDayIndex === todayIndex ? 'Entraînement du jour' : DAYS[activeDayIndex]}
                     </p>
                     <h3 className="font-bold text-xl leading-tight">{todayQuest.title}</h3>
                   </div>
@@ -258,7 +258,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
                 </div>
                 <Button asChild className="w-full h-11 text-base font-bold">
                   <Link to={`/train/${todayQuest.id}`}>
-                    ⚔️ Lancer la séance
+                    🏋️ Lancer l'entraînement
                   </Link>
                 </Button>
               </div>
@@ -278,7 +278,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
         <section>
           <Link to="/my-program">
             <div className="rounded-2xl border border-dashed border-accent/30 p-5 text-center space-y-2 hover:border-accent/60 hover:bg-accent/5 transition-all">
-              <div className="text-3xl">⚔️</div>
+              <div className="text-3xl">🏋️</div>
               <p className="font-semibold">Créer mon programme</p>
               <p className="text-xs text-muted-foreground">Construis ton planning d'entraînement personnalisé</p>
             </div>
@@ -289,7 +289,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
       {!isGuided && personalProgram && (
         <Button asChild variant="outline" className="w-full h-11 border-accent/30 text-accent hover:bg-accent/5 hover:border-accent/60 font-semibold">
           <Link to="/my-program">
-            <Swords className="w-4 h-4 mr-2" />
+            <Dumbbell className="w-4 h-4 mr-2" />
             Modifier mon programme
           </Link>
         </Button>
@@ -304,7 +304,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
           </h2>
           {isGuided && (
             <p className="text-xs text-muted-foreground -mt-1">
-              Complète les quêtes dans l'ordre pour progresser et débloquer la suite.
+              Complète les entraînements dans l'ordre pour progresser et débloquer la suite.
             </p>
           )}
 
