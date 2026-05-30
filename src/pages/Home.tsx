@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useProfile } from '@/hooks/useProfile'
 import { useAuth } from '@/hooks/useAuth'
 import { useStreak } from '@/hooks/useStreak'
-import { useDailyQuest } from '@/hooks/useDailyQuest'
+
 import { supabase } from '@/integrations/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -44,8 +44,7 @@ export default function Home() {
   const { profile } = useProfile()
   const { user } = useAuth()
   const { streak } = useStreak(profile?.id)
-  const { dailyQuest } = useDailyQuest(profile?.id)
-  const { pendingChest, loadPendingChest } = useChestReward()
+const { pendingChest, loadPendingChest } = useChestReward()
   const { equipped } = useCollection()
   const [personalProgram, setPersonalProgram] = useState<PersonalProgram | null>(null)
   const [publicCampaigns, setPublicCampaigns] = useState<PublicCampaign[]>([])
@@ -183,38 +182,7 @@ export default function Home() {
         </Link>
       )}
 
-      {/* QUETE QUOTIDIENNE — masquée en mode autonome (en standby) */}
-      {!isAutonomous && <section className="rounded-2xl border border-accent/30 bg-accent/5 p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
-              <Target className="w-5 h-5 text-accent" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-accent uppercase tracking-widest font-black">Quête du jour</p>
-              <h2 className="font-bold text-lg leading-tight">{dailyQuest.title}</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">{dailyQuest.description}</p>
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="flex items-center justify-end gap-1 text-accent font-black">
-              <Gift className="w-3.5 h-3.5" />
-              +{dailyQuest.rewardXp}
-            </div>
-            <div className="text-[10px] text-muted-foreground">bonus XP</div>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{dailyQuest.progress}/{dailyQuest.target} {dailyQuest.unit}</span>
-            <span>{dailyQuest.isComplete ? 'Accomplie' : `${dailyQuest.percentage}%`}</span>
-          </div>
-          <Progress value={dailyQuest.percentage} className="h-2" />
-        </div>
-      </section>}
-
-      {/* QUETE DU JOUR — visible uniquement en mode autonome */}
+      {/* PROGRAMME PERSO */}
       {!isGuided && personalProgram && (
         <section className="space-y-3">
           <div className="flex items-center justify-between">
