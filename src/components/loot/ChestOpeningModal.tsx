@@ -64,7 +64,7 @@ export function ChestOpeningModal({ userChest, userId, open, onClose }: ChestOpe
             <p className="text-sm text-muted-foreground">
               {userChest.chest?.description ?? 'Un coffre t\'attend.'}
             </p>
-            <Button onClick={handleOpen} className="w-full h-12 text-base font-bold" disabled={isOpening}>
+            <Button onClick={handleOpen} className="w-full h-12 text-base font-bold" disabled={step !== 'closed'}>
               Ouvrir le coffre
             </Button>
           </div>
