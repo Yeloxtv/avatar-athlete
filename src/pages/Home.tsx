@@ -172,7 +172,7 @@ const { pendingChest, loadPendingChest } = useChestReward()
 
       {/* COFFRE EN ATTENTE */}
       {pendingChest && (
-        <Link to="/collection" className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10 transition-colors">
+        <Link to={`/chest/${pendingChest.id}`} className="flex items-center gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10 transition-colors">
           <span className="text-2xl shrink-0">{CHEST_EMOJI[(pendingChest.chest?.rarity ?? 'common') as any]}</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold">Coffre à ouvrir !</p>

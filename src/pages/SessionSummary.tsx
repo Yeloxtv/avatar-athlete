@@ -9,7 +9,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Clock, Dumbbell, Loader2, ChevronDown, ChevronUp, Trophy, Zap, Gift } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { useChestReward } from '@/hooks/useChestReward'
-import { ChestOpeningModal } from '@/components/loot/ChestOpeningModal'
 import { RarityBadge } from '@/components/loot/RarityBadge'
 import { CHEST_EMOJI } from '@/types/loot'
 
@@ -34,7 +33,6 @@ export default function SessionSummary() {
 
   // Loot
   const { pendingChest, earnChest } = useChestReward()
-  const [showChestModal, setShowChestModal] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -362,21 +360,12 @@ export default function SessionSummary() {
               <div className="font-bold text-sm">{pendingChest.chest?.name ?? 'Coffre'}</div>
               <RarityBadge rarity={(pendingChest.chest?.rarity ?? 'common') as any} size="sm" className="mt-1" />
             </div>
-            <Button size="sm" className="shrink-0 gap-1" onClick={() => setShowChestModal(true)}>
+            <Button size="sm" className="shrink-0 gap-1" onClick={() => navigate(`/chest/${pendingChest.id}`)}>
               <Gift className="w-4 h-4" />
               Ouvrir
             </Button>
           </CardContent>
         </Card>
-      )}
-
-      {pendingChest && showChestModal && (
-        <ChestOpeningModal
-          userChest={pendingChest}
-          userId={user.id}
-          open={showChestModal}
-          onClose={() => setShowChestModal(false)}
-        />
       )}
 
       {/* NOTE */}

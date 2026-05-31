@@ -19,6 +19,7 @@ import Exercises from "@/pages/Exercises";
 import MyProgram from "@/pages/MyProgram";
 import Progress from "@/pages/Progress";
 import Collection from "@/pages/Collection";
+import ChestOpening from "@/pages/ChestOpening";
 import TestChest from "@/pages/TestChest";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,7 +27,7 @@ import { useProfile } from "@/hooks/useProfile";
 
 const queryClient = new QueryClient();
 
-const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//, /^\/auth/, /^\/my-program/];
+const HIDDEN_TABBAR_PATTERNS = [/^\/train\//, /\/summary$/, /^\/statistics\/session\//, /^\/auth/, /^\/my-program/, /^\/chest\//];
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
@@ -72,6 +73,7 @@ function ProtectedLayout() {
           <Route path="/my-program" element={<MyProgram />} />
           <Route path="/progress" element={<Progress />} />
           <Route path="/collection" element={<Collection />} />
+          <Route path="/chest/:userChestId" element={<ChestOpening />} />
           <Route path="/test-chest" element={<TestChest />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
