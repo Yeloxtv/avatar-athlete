@@ -11,6 +11,19 @@ interface ChestOpeningModalProps {
   userId: string
   open: boolean
   onClose: () => void
+  testMode?: boolean
+}
+
+const FAKE_REWARD: RewardDefinition = {
+  id: 'test',
+  slug: 'title_beast_mode',
+  type: 'title',
+  rarity: 'epic',
+  name: 'Beast Mode',
+  description: 'Volume max. Intensité max.',
+  asset_key: '🦁',
+  collection_slug: 'strength',
+  is_equippable: true,
 }
 
 type Step = 'idle' | 'shaking' | 'opening' | 'revealed'
@@ -28,7 +41,7 @@ function getChestImgs(slug?: string) {
   return CHEST_IMG[slug ?? ''] ?? CHEST_IMG.default
 }
 
-export function ChestOpeningModal({ userChest, userId, open, onClose }: ChestOpeningModalProps) {
+export function ChestOpeningModal({ userChest, userId, open, onClose, testMode = false }: ChestOpeningModalProps) {
   const navigate = useNavigate()
   const { openChest } = useChestReward()
   const [step, setStep] = useState<Step>('idle')
@@ -64,8 +77,8 @@ export function ChestOpeningModal({ userChest, userId, open, onClose }: ChestOpe
 
     // Phase 2 — ouverture (frame 3) 600ms
     setStep('opening')
-    setFrame('closed') // reset frame pendant qu'on fetch
-    const result = await openChest(userId, userChest.id)
+    setFrame('closed')
+    const result = testMode ? FAKE_REWARD : await openChest(userId, userChest.id)
     await new Promise(r => setTimeout(r, 600))
 
     if (result) {

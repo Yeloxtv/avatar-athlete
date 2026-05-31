@@ -19,6 +19,7 @@ import Exercises from "@/pages/Exercises";
 import MyProgram from "@/pages/MyProgram";
 import Progress from "@/pages/Progress";
 import Collection from "@/pages/Collection";
+import TestChest from "@/pages/TestChest";
 import Auth from "./pages/Auth";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
@@ -71,6 +72,7 @@ function ProtectedLayout() {
           <Route path="/my-program" element={<MyProgram />} />
           <Route path="/progress" element={<Progress />} />
           <Route path="/collection" element={<Collection />} />
+          <Route path="/test-chest" element={<TestChest />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
