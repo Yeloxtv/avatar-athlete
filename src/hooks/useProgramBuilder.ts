@@ -4,7 +4,7 @@ import { ExerciseDraft, SessionDraft } from '@/types/program'
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 export function emptyExercise(): ExerciseDraft {
-  return { name: '', sets_count: 3, target_reps: 8, target_weight: null, rest_seconds: 90 }
+  return { name: '', sets_count: 3, target_reps: 8, target_weight: null, rest_seconds: 90, superset_group: null }
 }
 
 export function emptySession(dayIndex: number): SessionDraft {

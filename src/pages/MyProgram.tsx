@@ -9,10 +9,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { ArrowLeft, ArrowRight, Plus, Trash2, ChevronLeft, ChevronRight, Check, GripVertical, Zap, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, ChevronLeft, ChevronRight, Check, GripVertical, Zap, X, Link2, Unlink } from 'lucide-react'
+import { buildSegments, linkWithNext, unlinkExercise, canLinkWithNext, normalizeGroups } from '@/lib/superset'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 import { useGlobalExercises } from '@/hooks/useGlobalExercises'
+import { CreateExerciseDialog } from '@/components/exercises/CreateExerciseDialog'
 import {
   DndContext,
   closestCenter,
@@ -162,12 +164,15 @@ function ExerciseAutocomplete({
   value,
   onChange,
   allExercises,
+  userId,
 }: {
   value: string
   onChange: (name: string, globalId: string | null) => void
   allExercises: ReturnType<typeof useGlobalExercises>['exercises']
+  userId: string | undefined
 }) {
   const [open, setOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   const q = value.trim().toLowerCase()
@@ -179,6 +184,9 @@ function ExerciseAutocomplete({
         )
         .slice(0, 8)
     : []
+
+  // Proposer la création si la recherche ne matche aucun nom exactement
+  const showCreate = q.length >= 2 && !allExercises.some(e => e.name.toLowerCase() === q)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -197,7 +205,7 @@ function ExerciseAutocomplete({
         placeholder="Nom de l'exercice"
         className="h-11 text-base"
       />
-      {open && suggestions.length > 0 && (
+      {open && (suggestions.length > 0 || showCreate) && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-muted/40 bg-background shadow-lg overflow-hidden">
           {suggestions.map(ex => (
             <button
@@ -220,8 +228,30 @@ function ExerciseAutocomplete({
               <span className="shrink-0 text-xs text-muted-foreground/60 capitalize ml-auto">{ex.body_part}</span>
             </button>
           ))}
+          {showCreate && (
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-accent hover:bg-accent/5 transition-colors border-t border-muted/20"
+              onMouseDown={e => {
+                e.preventDefault()
+                setOpen(false)
+                setCreateOpen(true)
+              }}
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium truncate">Créer « {value.trim()} »</span>
+            </button>
+          )}
         </div>
       )}
+
+      <CreateExerciseDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        userId={userId}
+        defaultName={value.trim()}
+        onCreated={ex => onChange(ex.name, ex.id)}
+      />
     </div>
   )
 }
@@ -231,17 +261,29 @@ function ExerciseAutocomplete({
 function ExerciseCard({
   exercise,
   index,
+  label,
+  isGrouped,
+  canLinkNext,
+  onLinkNext,
+  onUnlink,
   onChange,
   onRemove,
   canRemove,
   allExercises,
+  userId,
 }: {
   exercise: ExerciseDraft
   index: number
+  label?: string
+  isGrouped: boolean
+  canLinkNext: boolean
+  onLinkNext: () => void
+  onUnlink: () => void
   onChange: (field: keyof ExerciseDraft, value: string | number | null) => void
   onRemove: () => void
   canRemove: boolean
   allExercises: ReturnType<typeof useGlobalExercises>['exercises']
+  userId: string | undefined
 }) {
   const cardId = exercise.id ?? `ex-${index}`
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId })
@@ -255,23 +297,45 @@ function ExerciseCard({
             <GripVertical className="w-4 h-4" />
           </button>
           <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            Exercice {index + 1}
+            {label ?? `Exercice ${index + 1}`}
           </span>
         </div>
-        {canRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-destructive/60 hover:text-destructive transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isGrouped ? (
+            <button
+              type="button"
+              onClick={onUnlink}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              title="Retirer du superset"
+            >
+              <Unlink className="w-3.5 h-3.5" /> Délier
+            </button>
+          ) : canLinkNext ? (
+            <button
+              type="button"
+              onClick={onLinkNext}
+              className="flex items-center gap-1 text-[11px] text-accent hover:text-accent/80 transition-colors"
+              title="Enchaîner avec l'exercice suivant en superset"
+            >
+              <Link2 className="w-3.5 h-3.5" /> Lier au suivant
+            </button>
+          ) : null}
+          {canRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-destructive/60 hover:text-destructive transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <ExerciseAutocomplete
         value={exercise.name}
         allExercises={allExercises}
+        userId={userId}
         onChange={(name, globalId) => {
           onChange('name', name)
           if (globalId !== null) onChange('global_exercise_id', globalId)
@@ -342,6 +406,7 @@ function Step3({
   onBack,
   onSave,
   saving,
+  userId,
 }: {
   activeDays: Set<number>
   sessions: Record<number, SessionDraft>
@@ -349,6 +414,7 @@ function Step3({
   onBack: () => void
   onSave: () => void
   saving: boolean
+  userId: string | undefined
 }) {
   const sortedDays = [...activeDays].sort((a, b) => a - b)
   const [activeDayTab, setActiveDayTab] = useState(sortedDays[0])
@@ -381,7 +447,15 @@ function Step3({
   }
 
   const removeExercise = (idx: number) => {
-    updateSession({ exercises: session.exercises.filter((_, i) => i !== idx) })
+    updateSession({ exercises: normalizeGroups(session.exercises.filter((_, i) => i !== idx)) })
+  }
+
+  const linkNext = (idx: number) => {
+    updateSession({ exercises: linkWithNext(session.exercises, idx) })
+  }
+
+  const unlink = (idx: number) => {
+    updateSession({ exercises: unlinkExercise(session.exercises, idx) })
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -390,7 +464,7 @@ function Step3({
     const oldIdx = session.exercises.findIndex((ex, i) => (ex.id ?? `ex-${i}`) === active.id)
     const newIdx = session.exercises.findIndex((ex, i) => (ex.id ?? `ex-${i}`) === over.id)
     if (oldIdx === -1 || newIdx === -1) return
-    updateSession({ exercises: arrayMove(session.exercises, oldIdx, newIdx) })
+    updateSession({ exercises: normalizeGroups(arrayMove(session.exercises, oldIdx, newIdx)) })
   }
 
   // Finisher helpers
@@ -411,6 +485,7 @@ function Step3({
 
   const currentTabIdx = sortedDays.indexOf(activeDayTab)
   const exIds = session.exercises.map((ex, i) => ex.id ?? `ex-${i}`)
+  const segments = buildSegments(session.exercises)
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -471,17 +546,53 @@ function Step3({
         </p>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={exIds} strategy={verticalListSortingStrategy}>
-            {session.exercises.map((ex, idx) => (
-              <ExerciseCard
-                key={ex.id ?? `ex-${idx}`}
-                exercise={ex}
-                index={idx}
-                onChange={(field, value) => updateExercise(idx, field, value)}
-                onRemove={() => removeExercise(idx)}
-                canRemove={session.exercises.length > 1}
-                allExercises={allExercises}
-              />
-            ))}
+            {segments.map((seg, segIdx) => {
+              const renderCard = (idx: number, posInGroup?: number) => {
+                const ex = session.exercises[idx]
+                return (
+                  <ExerciseCard
+                    key={ex.id ?? `ex-${idx}`}
+                    exercise={ex}
+                    index={idx}
+                    label={seg.isSuperset
+                      ? `${String.fromCharCode(65 + (posInGroup ?? 0))} · Superset`
+                      : `Exercice ${idx + 1}`}
+                    isGrouped={seg.isSuperset}
+                    canLinkNext={canLinkWithNext(session.exercises, idx)}
+                    onLinkNext={() => linkNext(idx)}
+                    onUnlink={() => unlink(idx)}
+                    onChange={(field, value) => updateExercise(idx, field, value)}
+                    onRemove={() => removeExercise(idx)}
+                    canRemove={session.exercises.length > 1}
+                    allExercises={allExercises}
+                    userId={userId}
+                  />
+                )
+              }
+
+              if (!seg.isSuperset) return renderCard(seg.indices[0])
+
+              const lastIdx = seg.indices[seg.indices.length - 1]
+              const rest = session.exercises[lastIdx]?.rest_seconds ?? 0
+              return (
+                <div
+                  key={`superset-${segIdx}`}
+                  className="rounded-xl border-2 border-accent/40 bg-accent/5 p-2.5 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between px-1">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-accent uppercase tracking-wide">
+                      <Link2 className="w-3.5 h-3.5" />
+                      Superset · {seg.indices.length} exercices
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">enchaînés sans repos</span>
+                  </div>
+                  {seg.indices.map((idx, pos) => renderCard(idx, pos))}
+                  <p className="text-[11px] text-muted-foreground px-1">
+                    Repos de {rest}s après le bloc complet, puis on recommence.
+                  </p>
+                </div>
+              )
+            })}
           </SortableContext>
         </DndContext>
       </div>
@@ -579,6 +690,7 @@ function Step3({
                     <ExerciseAutocomplete
                       value={fex.name}
                       allExercises={allExercises}
+                      userId={userId}
                       onChange={(name, globalId) => {
                         updateFinisherExercise(fidx, 'name', name)
                         if (globalId) updateFinisherExercise(fidx, 'global_exercise_id', globalId)
@@ -742,6 +854,7 @@ export default function MyProgram() {
           onBack={() => builder.setStep(2)}
           onSave={handleSave}
           saving={persistence.saving}
+          userId={user?.id}
         />
       )}
     </div>

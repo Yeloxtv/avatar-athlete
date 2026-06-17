@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { StrengthWorkoutState, ExerciseLog, SetInput, PreviousPerformance } from '@/types/strength'
 import type { Tables } from '@/integrations/supabase/types'
 import { supabase } from '@/integrations/supabase/client'
+import { buildSegments, normalizeGroups, MAX_SUPERSET_SIZE } from '@/lib/superset'
 
 type QuestExercise = Tables<'quest_exercises'>
 
@@ -9,6 +10,14 @@ type QuestExercise = Tables<'quest_exercises'>
 export type EnrichedQuestExercise = QuestExercise & {
   gif_url?: string | null
   global_exercise_id?: string | null
+}
+
+// Un bloc d'entraînement : exercice simple (taille 1) ou superset (2-5 exercices enchaînés).
+export interface WorkoutBlock {
+  exerciseIndices: number[]  // indices dans le tableau `exercises`
+  rounds: number             // nombre de tours (= séries) du bloc
+  restSeconds: number        // repos pris après chaque tour complet du bloc
+  isSuperset: boolean
 }
 
 interface UseStrengthWorkoutProps {
@@ -59,8 +68,9 @@ export const useStrengthWorkout = ({
   }, [initialExercises.length])
 
   const [state, setState] = useState<StrengthWorkoutState>({
-    currentExerciseIndex: 0,
-    currentSet: 1,
+    currentBlockIndex: 0,
+    currentRound: 1,
+    positionInBlock: 0,
     exerciseLogs: [],
     restTimer: 0,
     isResting: false,
@@ -72,13 +82,48 @@ export const useStrengthWorkout = ({
 
   const restTimerRef = useRef<number | null>(null)
 
-  const currentExercise = exercises[state.currentExerciseIndex]
+  // ─── Dérivation des blocs (supersets) ───────────────────────────────────────
+  const blocks = useMemo<WorkoutBlock[]>(() => {
+    const segs = buildSegments(exercises)
+    return segs.map(seg => {
+      const exs = seg.indices.map(i => exercises[i])
+      const rounds = Math.max(1, ...exs.map(e => e.sets_count || 3))
+      const last = exs[exs.length - 1]
+      return {
+        exerciseIndices: seg.indices,
+        rounds,
+        restSeconds: last?.rest_seconds || restTimeSeconds,
+        isSuperset: seg.isSuperset,
+      }
+    })
+  }, [exercises, restTimeSeconds])
 
-  const totalSets = currentExercise?.sets_count || 3
-  const exerciseRestTime = currentExercise?.rest_seconds || restTimeSeconds
-  const isWorkoutComplete = exercises.length > 0 && state.currentExerciseIndex >= exercises.length
+  const currentBlock = blocks[state.currentBlockIndex]
+  const currentExerciseIndex = currentBlock
+    ? (currentBlock.exerciseIndices[state.positionInBlock] ?? currentBlock.exerciseIndices[0])
+    : 0
+  const currentExercise = exercises[currentExerciseIndex]
 
-  const totalSetsInWorkout = exercises.reduce((total, ex) => total + (ex.sets_count || 3), 0)
+  const totalSets = currentBlock?.rounds || (currentExercise?.sets_count || 3)
+  const exerciseRestTime = currentBlock?.restSeconds || restTimeSeconds
+  const isWorkoutComplete = blocks.length > 0 && state.currentBlockIndex >= blocks.length
+
+  // Exercices du bloc courant (pour l'UI superset)
+  const currentBlockExercises = currentBlock
+    ? currentBlock.exerciseIndices.map(i => exercises[i])
+    : []
+
+  // Superset "à la volée" : enchaîner le bloc suivant avec le bloc courant
+  const nextBlock = blocks[state.currentBlockIndex + 1]
+  const nextBlockName = nextBlock ? (exercises[nextBlock.exerciseIndices[0]]?.name ?? null) : null
+  const canGroupWithNext = !!currentBlock && !!nextBlock && !isWorkoutComplete &&
+    (currentBlock.exerciseIndices.length + nextBlock.exerciseIndices.length) <= MAX_SUPERSET_SIZE
+  const canUngroupCurrent = !!currentBlock && currentBlock.isSuperset && state.positionInBlock === 0
+
+  const totalSetsInWorkout = blocks.reduce(
+    (total, b) => total + b.rounds * b.exerciseIndices.length,
+    0
+  )
   const progressPercentage = totalSetsInWorkout > 0
     ? ((state.completedSets / totalSetsInWorkout) * 100)
     : 0
@@ -87,10 +132,10 @@ export const useStrengthWorkout = ({
     log => log.exercise_id === currentExercise?.id
   )
   const canCompleteSet = !state.isResting && !isWorkoutComplete
-  const setsRemaining = totalSets - (state.currentSet - 1)
+  const setsRemaining = totalSets - (state.currentRound - 1)
 
   const startRest = useCallback(() => {
-    const restTime = exerciseRestTime
+    const restTime = currentBlock?.restSeconds || restTimeSeconds
     setState(prev => ({ ...prev, isResting: true, restTimer: restTime }))
 
     restTimerRef.current = setInterval(() => {
@@ -105,7 +150,7 @@ export const useStrengthWorkout = ({
         return { ...prev, restTimer: prev.restTimer - 1 }
       })
     }, 1000)
-  }, [exerciseRestTime])
+  }, [currentBlock?.restSeconds, restTimeSeconds])
 
   const skipRest = useCallback(() => {
     if (restTimerRef.current) {
@@ -120,17 +165,23 @@ export const useStrengthWorkout = ({
   }, [])
 
   const completeSet = useCallback(async (setData: SetInput) => {
-    if (!currentExercise || !sessionId) return
+    if (!currentExercise || !sessionId || !currentBlock) return
 
     const globalExerciseId = (currentExercise as EnrichedQuestExercise).global_exercise_id ?? null
 
     const newLog: ExerciseLog = {
       session_id: sessionId,
       exercise_id: currentExercise.id,
-      set_number: state.currentSet,
+      set_number: state.currentRound,
       reps_completed: setData.reps,
       weight_used: setData.weight
     }
+
+    // Décision de repos AVANT le setState (basée sur l'état courant) :
+    // on ne repose qu'après le DERNIER exercice du bloc pour ce tour, s'il reste des tours.
+    const isLastInRound = state.positionInBlock >= currentBlock.exerciseIndices.length - 1
+    const moreRounds = state.currentRound < currentBlock.rounds
+    const shouldRest = isLastInRound && moreRounds
 
     try {
       const { error } = await supabase
@@ -155,37 +206,47 @@ export const useStrengthWorkout = ({
       onSetCompleted?.({
         exerciseId: currentExercise.id,
         exerciseName: currentExercise.name,
-        setNumber: state.currentSet,
+        setNumber: state.currentRound,
         reps: setData.reps,
         weight: setData.weight ?? 0,
         xp: 0,
       })
 
       setState(prev => {
+        const block = blocks[prev.currentBlockIndex]
         const newState = {
           ...prev,
           exerciseLogs: [...prev.exerciseLogs, newLog],
           completedSets: prev.completedSets + 1
         }
 
-        if (prev.currentSet < totalSets) {
-          newState.currentSet = prev.currentSet + 1
+        if (!block) return newState
+
+        if (prev.positionInBlock < block.exerciseIndices.length - 1) {
+          // Exercice suivant du même bloc → pas de repos (enchaînement superset)
+          newState.positionInBlock = prev.positionInBlock + 1
+        } else if (prev.currentRound < block.rounds) {
+          // Fin d'un tour, il en reste → on recommence le bloc après repos
+          newState.currentRound = prev.currentRound + 1
+          newState.positionInBlock = 0
         } else {
-          newState.currentExerciseIndex = prev.currentExerciseIndex + 1
-          newState.currentSet = 1
+          // Bloc terminé → bloc suivant (pas de repos, comme entre exercices)
+          newState.currentBlockIndex = prev.currentBlockIndex + 1
+          newState.currentRound = 1
+          newState.positionInBlock = 0
         }
 
         return newState
       })
 
-      if (state.currentSet < totalSets) {
+      if (shouldRest) {
         startRest()
       }
 
     } catch (error) {
       console.error('Erreur sauvegarde set:', error)
     }
-  }, [sessionId, currentExercise, state.currentSet, totalSets, startRest, onSetCompleted])
+  }, [sessionId, currentExercise, currentBlock, blocks, state.currentRound, state.positionInBlock, startRest, onSetCompleted])
 
   const fetchBestPreviousPerformance = async (exerciseId: string): Promise<PreviousPerformance | null> => {
     if (!sessionId) return null
@@ -251,46 +312,55 @@ export const useStrengthWorkout = ({
         .from('exercise_logs')
         .select('exercise_id, set_number')
         .eq('session_id', sessionId)
-        .order('set_number', { ascending: true })
 
-      let restoredExerciseIndex = 0
-      let restoredSet = 1
+      let restoredBlockIndex = 0
+      let restoredRound = 1
+      let restoredPosition = 0
       let restoredCompletedSets = 0
 
       if (existingLogs && existingLogs.length > 0) {
-        // Reconstruire combien de séries ont été faites par exercice
-        const setsDonePerExercise: Record<string, number> = {}
-        for (const log of existingLogs) {
-          setsDonePerExercise[log.exercise_id] = Math.max(
-            setsDonePerExercise[log.exercise_id] ?? 0,
-            log.set_number
-          )
-        }
         restoredCompletedSets = existingLogs.length
 
-        // Trouver le premier exercice pas encore terminé
-        for (let i = 0; i < exercises.length; i++) {
-          const ex = exercises[i]
-          const setsDone = setsDonePerExercise[ex.id] ?? 0
-          const totalSetsForEx = ex.sets_count ?? 3
-          if (setsDone < totalSetsForEx) {
-            restoredExerciseIndex = i
-            restoredSet = setsDone + 1
-            break
+        // Combien de séries loggées par exercice
+        const remaining: Record<string, number> = {}
+        for (const log of existingLogs) {
+          remaining[log.exercise_id] = (remaining[log.exercise_id] ?? 0) + 1
+        }
+
+        // Parcourir les étapes canoniques (bloc → tour → position) et consommer les logs.
+        // La 1ère étape sans log disponible = point de reprise.
+        let found = false
+        for (let b = 0; b < blocks.length && !found; b++) {
+          for (let r = 1; r <= blocks[b].rounds && !found; r++) {
+            for (let p = 0; p < blocks[b].exerciseIndices.length && !found; p++) {
+              const exId = exercises[blocks[b].exerciseIndices[p]]?.id
+              if (exId && (remaining[exId] ?? 0) > 0) {
+                remaining[exId]--
+              } else {
+                restoredBlockIndex = b
+                restoredRound = r
+                restoredPosition = p
+                found = true
+              }
+            }
           }
-          // Exercice terminé, passer au suivant
-          restoredExerciseIndex = i + 1
-          restoredSet = 1
+        }
+        if (!found) {
+          // Toutes les étapes faites → entraînement terminé
+          restoredBlockIndex = blocks.length
+          restoredRound = 1
+          restoredPosition = 0
         }
       }
 
       setState(prev => ({
         ...prev,
         previousPerformances: performances,
-        // Ne restaurer la position que si des logs existent — sinon on garde index 0 / set 1
+        // Ne restaurer la position que si des logs existent — sinon on garde le début
         ...(restoredCompletedSets > 0 && {
-          currentExerciseIndex: restoredExerciseIndex,
-          currentSet: restoredSet,
+          currentBlockIndex: restoredBlockIndex,
+          currentRound: restoredRound,
+          positionInBlock: restoredPosition,
           completedSets: restoredCompletedSets,
         }),
       }))
@@ -301,23 +371,82 @@ export const useStrengthWorkout = ({
     }
   }, [sessionId])
 
-  const switchToExercise = useCallback((targetIndex: number) => {
-    const current = state.currentExerciseIndex
-    if (targetIndex <= current || targetIndex >= exercises.length) return
+  // Avancer immédiatement à un bloc ultérieur (déplace le bloc cible à la position courante)
+  const switchToExercise = useCallback((targetExerciseIndex: number) => {
+    const bc = state.currentBlockIndex
+    const bt = blocks.findIndex(b => b.exerciseIndices.includes(targetExerciseIndex))
+    if (bt < 0 || bt <= bc) return
+    const curStart = blocks[bc].exerciseIndices[0]
+    const tgt = blocks[bt].exerciseIndices
     setExercises(prev => {
-      const next = [...prev]
-      ;[next[current], next[targetIndex]] = [next[targetIndex], next[current]]
-      return next
+      const targetExs = tgt.map(i => prev[i])
+      const tgtSet = new Set(tgt)
+      const without = prev.filter((_, i) => !tgtSet.has(i))
+      // Le bloc cible étant après le bloc courant, curStart n'est pas décalé par le retrait.
+      return [...without.slice(0, curStart), ...targetExs, ...without.slice(curStart)]
     })
-    setState(prev => ({ ...prev, currentSet: 1 }))
-  }, [exercises.length, state.currentExerciseIndex])
+    setState(prev => ({ ...prev, currentRound: 1, positionInBlock: 0 }))
+  }, [blocks, state.currentBlockIndex])
+
+  // Réordonne les exercices selon une liste d'ids (ré-ancre la position sur l'exercice courant).
+  const reorderExercises = useCallback((orderedIds: string[]) => {
+    const byId = new Map(exercises.map(e => [e.id, e]))
+    const reordered = orderedIds
+      .map(id => byId.get(id))
+      .filter(Boolean) as EnrichedQuestExercise[]
+    if (reordered.length !== exercises.length) return
+    const next = normalizeGroups(reordered)
+
+    const anchorId = currentExercise?.id
+    let newBlock = state.currentBlockIndex
+    let newPos = state.positionInBlock
+    if (anchorId) {
+      const segs = buildSegments(next)
+      for (let b = 0; b < segs.length; b++) {
+        const pos = segs[b].indices.findIndex(i => next[i].id === anchorId)
+        if (pos >= 0) { newBlock = b; newPos = pos; break }
+      }
+    }
+
+    setExercises(next)
+    setState(s => ({ ...s, currentBlockIndex: newBlock, positionInBlock: newPos }))
+  }, [exercises, currentExercise?.id, state.currentBlockIndex, state.positionInBlock])
+
+  // Crée un superset à la volée : fusionne le bloc suivant dans le bloc courant.
+  // Reste en mémoire pour la séance (ne modifie pas le programme enregistré).
+  const groupWithNext = useCallback(() => {
+    const bc = state.currentBlockIndex
+    const block = blocks[bc]
+    const next = blocks[bc + 1]
+    if (!block || !next) return
+    if (block.exerciseIndices.length + next.exerciseIndices.length > MAX_SUPERSET_SIZE) return
+    setExercises(prev => {
+      const copy = prev.map(e => ({ ...e }))
+      const maxId = copy.reduce((m, e) => Math.max(m, e.superset_group ?? 0), 0)
+      const id = maxId + 1
+      for (const i of block.exerciseIndices) copy[i].superset_group = id
+      for (const i of next.exerciseIndices) copy[i].superset_group = id
+      return normalizeGroups(copy)
+    })
+  }, [blocks, state.currentBlockIndex])
+
+  // Annule le superset du bloc courant (uniquement en début de bloc).
+  const ungroupCurrent = useCallback(() => {
+    const block = blocks[state.currentBlockIndex]
+    if (!block || !block.isSuperset || state.positionInBlock !== 0) return
+    setExercises(prev => {
+      const copy = prev.map(e => ({ ...e }))
+      for (const i of block.exerciseIndices) copy[i].superset_group = null
+      return normalizeGroups(copy)
+    })
+  }, [blocks, state.currentBlockIndex, state.positionInBlock])
 
   const substituteExercise = useCallback(async (
     globalExerciseId: string,
     substituteName: string,
     substituteMuscleGroup: string
   ) => {
-    const idx = state.currentExerciseIndex
+    const idx = currentExerciseIndex
     const original = exercises[idx]
     if (!original) return
 
@@ -396,7 +525,7 @@ export const useStrengthWorkout = ({
       .update({ exercise_id: globalExerciseId } as any)
       .eq('id', original.id)
       .then(() => { /* fire-and-forget */ })
-  }, [state.currentExerciseIndex, exercises, sessionId])
+  }, [currentExerciseIndex, exercises, sessionId])
 
   useEffect(() => {
     return () => {
@@ -410,9 +539,17 @@ export const useStrengthWorkout = ({
   return {
     state: state as Readonly<StrengthWorkoutState>,
     exercises,
+    blocks,
+    currentBlock,
+    currentBlockExercises,
     currentExercise,
+    currentExerciseIndex,
+    currentSet: state.currentRound,
+    currentRound: state.currentRound,
+    positionInBlock: state.positionInBlock,
     isWorkoutComplete,
     progressPercentage,
+    totalSetsInWorkout,
     currentExerciseLogs,
     canCompleteSet,
     setsRemaining,
@@ -424,11 +561,17 @@ export const useStrengthWorkout = ({
     },
     lastPR,
     clearPR: () => setLastPR(null),
+    canGroupWithNext,
+    canUngroupCurrent,
+    nextBlockName,
     completeSet,
     startRest,
     skipRest,
     adjustRest,
     switchToExercise,
+    reorderExercises,
+    groupWithNext,
+    ungroupCurrent,
     substituteExercise,
   } as const
 }

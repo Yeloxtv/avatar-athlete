@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { useCampaignManager } from '@/hooks/useCampaignManager'
 import { ExerciseDraft, SessionDraft, FinisherDraft } from '@/types/program'
+import { normalizeGroups } from '@/lib/superset'
 import { toast } from '@/hooks/use-toast'
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -36,7 +37,7 @@ export function useProgramPersistence() {
           id, title,
           quests(
             id, title, day_of_week, workout_type, total_minutes,
-            quest_exercises(id, name, sets_count, target_reps, reps_unit, target_weight, rest_seconds, order_index, exercise_id)
+            quest_exercises(id, name, sets_count, target_reps, reps_unit, target_weight, rest_seconds, order_index, exercise_id, superset_group)
           )
         `)
         .eq('owner_user_id', profileId)
@@ -85,6 +86,7 @@ export function useProgramPersistence() {
             target_weight: ex.target_weight ?? null,
             rest_seconds: ex.rest_seconds ?? 90,
             global_exercise_id: ex.exercise_id ?? null,
+            superset_group: ex.superset_group ?? null,
           }))
         sessionMap[quest.day_of_week] = {
           questId: quest.id,
@@ -192,8 +194,8 @@ export function useProgramPersistence() {
           questId = created.id
         }
 
-        // Sync exercises
-        const validExercises = session.exercises.filter(ex => ex.name.trim())
+        // Sync exercises (re-normalise les groupes après filtre pour garder la contiguïté)
+        const validExercises = normalizeGroups(session.exercises.filter(ex => ex.name.trim()))
 
         // Delete exercises not in the current list
         const existingIds = validExercises.map(ex => ex.id).filter(Boolean) as string[]
@@ -217,6 +219,7 @@ export function useProgramPersistence() {
             target_reps: ex.target_reps,
             target_weight: ex.target_weight ?? null,
             rest_seconds: ex.rest_seconds,
+            superset_group: ex.superset_group ?? null,
             notes: null,
             ...(ex.global_exercise_id ? { exercise_id: ex.global_exercise_id } : {}),
           }))
@@ -229,6 +232,7 @@ export function useProgramPersistence() {
             target_reps: ex.target_reps,
             target_weight: ex.target_weight ?? null,
             rest_seconds: ex.rest_seconds,
+            superset_group: ex.superset_group ?? null,
             notes: null,
             ...(ex.global_exercise_id ? { exercise_id: ex.global_exercise_id } : {}),
           }))

@@ -8,6 +8,8 @@ export interface ExerciseDraft {
   target_weight: number | null
   rest_seconds: number
   global_exercise_id?: string | null
+  // Superset : exercices contigus partageant la même valeur = un même bloc. null = exercice simple.
+  superset_group?: number | null
 }
 
 export interface FinisherExerciseDraft {

@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
-import { RefreshCw, Search, Dumbbell } from 'lucide-react'
+import { RefreshCw, Search, Dumbbell, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useGlobalExercises } from '@/hooks/useGlobalExercises'
+import { useGlobalExercises, type GlobalExercise } from '@/hooks/useGlobalExercises'
+import { useAuth } from '@/hooks/useAuth'
+import { CreateExerciseDialog } from '@/components/exercises/CreateExerciseDialog'
 
 const EQUIPMENT_FR: Record<string, string> = {
   barbell: 'Barre', dumbbell: 'Haltères', cable: 'Poulie', machine: 'Machine',
@@ -26,17 +28,6 @@ const EQUIPMENT_COLORS: Record<string, string> = {
   other: 'bg-muted/40 text-muted-foreground',
 }
 
-const DIFFICULTY_FR: Record<string, string> = {
-  beginner: 'Débutant', intermediate: 'Intermédiaire', advanced: 'Avancé', expert: 'Expert',
-}
-
-const DIFFICULTY_COLORS: Record<string, string> = {
-  beginner: 'bg-green-500/20 text-green-400',
-  intermediate: 'bg-yellow-500/20 text-yellow-400',
-  advanced: 'bg-red-500/20 text-red-400',
-  expert: 'bg-red-500/20 text-red-400',
-}
-
 export interface SubstituteDrawerProps {
   currentExerciseName: string
   muscleGroup: string | null
@@ -46,19 +37,45 @@ export interface SubstituteDrawerProps {
 export function SubstituteDrawer({ currentExerciseName, muscleGroup, onSubstitute }: SubstituteDrawerProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [equipFilter, setEquipFilter] = useState<string | null>(null)
+  const { user } = useAuth()
 
   const { exercises, loading } = useGlobalExercises(open, muscleGroup)
 
+  const handleCreated = (ex: GlobalExercise) => {
+    onSubstitute(ex.id, ex.name, ex.body_part)
+    setOpen(false)
+    setSearch('')
+  }
+
+  // Équipements présents dans ce groupe musculaire, triés par fréquence
+  const equipments = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const e of exercises) {
+      if (e.name === currentExerciseName || !e.equipment) continue
+      counts.set(e.equipment, (counts.get(e.equipment) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key)
+  }, [exercises, currentExerciseName])
+
+  // Recherche large (les noms ExerciseDB sont en anglais → on ratisse aussi
+  // muscle ciblé, équipement et muscles secondaires)
   const q = search.trim().toLowerCase()
-  const filtered = q.length >= 2
-    ? exercises.filter(e =>
-        e.name !== currentExerciseName &&
-        (e.name.toLowerCase().includes(q) || (e.name_fr ?? '').toLowerCase().includes(q))
-      )
-    : exercises.filter(e => e.name !== currentExerciseName)
+  const matchesSearch = (e: GlobalExercise) =>
+    q.length < 2 ||
+    [e.name, e.name_fr, e.target_muscle, e.equipment, ...(e.secondary_muscles ?? [])]
+      .some(s => (s ?? '').toLowerCase().includes(q))
+
+  const filtered = exercises.filter(e =>
+    e.name !== currentExerciseName &&
+    matchesSearch(e) &&
+    (!equipFilter || e.equipment === equipFilter)
+  )
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <>
+    <Sheet open={open} onOpenChange={o => { setOpen(o); if (!o) { setSearch(''); setEquipFilter(null) } }}>
       <SheetTrigger asChild>
         <Button
           variant="ghost"
@@ -88,66 +105,118 @@ export function SubstituteDrawer({ currentExerciseName, muscleGroup, onSubstitut
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1">
+        {/* Filtres par équipement */}
+        {equipments.length > 1 && (
+          <div className="shrink-0 flex gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-1">
+            <button
+              type="button"
+              onClick={() => setEquipFilter(null)}
+              className={cn(
+                'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                equipFilter === null
+                  ? 'bg-accent text-accent-foreground border-accent'
+                  : 'border-muted/40 text-muted-foreground hover:border-accent/40'
+              )}
+            >
+              Tous
+            </button>
+            {equipments.map(eq => (
+              <button
+                key={eq}
+                type="button"
+                onClick={() => setEquipFilter(eq === equipFilter ? null : eq)}
+                className={cn(
+                  'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                  equipFilter === eq
+                    ? 'bg-accent text-accent-foreground border-accent'
+                    : 'border-muted/40 text-muted-foreground hover:border-accent/40'
+                )}
+              >
+                {EQUIPMENT_FR[eq] ?? eq}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Grille d'exercices */}
+        <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Chargement...</div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Aucun résultat</div>
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+              <p className="text-muted-foreground text-sm">Aucun exercice trouvé</p>
+              <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
+                <Plus className="w-4 h-4" />
+                {search.trim() ? `Créer « ${search.trim()} »` : 'Créer un exercice'}
+              </Button>
+            </div>
           ) : (
-            filtered.map(ex => (
-              <button
-                key={ex.id}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/20 transition-colors text-left"
-                onClick={() => {
-                  onSubstitute(ex.id, ex.name, ex.body_part)
-                  setOpen(false)
-                  setSearch('')
-                }}
-              >
-                {/* Thumbnail GIF */}
-                <div className="shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-muted/20 flex items-center justify-center">
-                  {ex.image_url ? (
-                    <img
-                      src={ex.image_url}
-                      alt={ex.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  ) : (
-                    <Dumbbell className="w-5 h-5 text-muted-foreground/40" />
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{ex.name}</p>
-                  {ex.name_fr && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{ex.name_fr}</p>
-                  )}
-                  {ex.target_muscle && (
-                    <p className="text-xs text-muted-foreground/60 truncate capitalize">{ex.target_muscle}</p>
-                  )}
-                </div>
-
-                {/* Badges */}
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  {ex.difficulty && (
-                    <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', DIFFICULTY_COLORS[ex.difficulty] ?? 'bg-muted/30')}>
-                      {DIFFICULTY_FR[ex.difficulty] ?? ex.difficulty}
-                    </span>
-                  )}
-                  {ex.equipment && (
-                    <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', EQUIPMENT_COLORS[ex.equipment] ?? EQUIPMENT_COLORS.other)}>
-                      {EQUIPMENT_FR[ex.equipment] ?? ex.equipment}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))
+            <div className="grid grid-cols-2 gap-2.5 pb-1">
+              {filtered.map(ex => {
+                const media = ex.gif_url ?? ex.image_url
+                return (
+                  <button
+                    key={ex.id}
+                    className="flex flex-col rounded-xl border border-muted/30 overflow-hidden hover:border-accent/50 transition-colors text-left"
+                    onClick={() => {
+                      onSubstitute(ex.id, ex.name, ex.body_part)
+                      setOpen(false)
+                      setSearch('')
+                    }}
+                  >
+                    <div className="aspect-square bg-muted/20 flex items-center justify-center overflow-hidden">
+                      {media ? (
+                        <img
+                          src={media}
+                          alt={ex.name}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+                        />
+                      ) : (
+                        <Dumbbell className="w-8 h-8 text-muted-foreground/40" />
+                      )}
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <p className="text-xs font-medium leading-tight line-clamp-2">{ex.name}</p>
+                      {ex.equipment && (
+                        <span className={cn('inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium', EQUIPMENT_COLORS[ex.equipment] ?? EQUIPMENT_COLORS.other)}>
+                          {EQUIPMENT_FR[ex.equipment] ?? ex.equipment}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
+
+        {/* Créer un exercice manquant — toujours accessible */}
+        {!loading && filtered.length > 0 && (
+          <div className="shrink-0 pt-2 border-t border-muted/20">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCreateOpen(true)}
+              className="w-full gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="w-4 h-4" />
+              {search.trim() ? `Créer « ${search.trim()} »` : 'Créer un exercice'}
+            </Button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
+
+    <CreateExerciseDialog
+      open={createOpen}
+      onOpenChange={setCreateOpen}
+      userId={user?.id}
+      defaultName={search.trim()}
+      defaultBodyPart={muscleGroup}
+      onCreated={handleCreated}
+    />
+    </>
   )
 }

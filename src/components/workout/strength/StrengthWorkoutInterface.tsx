@@ -9,7 +9,7 @@ import { toast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useStrengthWorkout } from '@/hooks/useStrengthWorkout'
 import { StrengthPerformanceInput } from '@/components/workout/StrengthPerformanceInput'
-import { Clock, StopCircle, Zap } from 'lucide-react'
+import { Clock, StopCircle, Zap, Link2, Unlink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SeriesDots } from './SeriesDots'
 import { RestPhase } from './RestPhase'
@@ -126,23 +126,26 @@ export default function StrengthWorkoutInterface({
     onFinishWorkout()
   }
 
-  const { state, currentExercise, exercises, isWorkoutComplete, totalSets, exerciseRestTime } = strengthWorkout
+  const {
+    state, currentExercise, exercises, isWorkoutComplete, totalSets, exerciseRestTime,
+    currentExerciseIndex, currentSet, currentBlock, currentBlockExercises, totalSetsInWorkout,
+    positionInBlock, canGroupWithNext, canUngroupCurrent, nextBlockName,
+  } = strengthWorkout
   const sessionReady = !!session?.id
 
-  const exerciseNumber = state.currentExerciseIndex + 1
+  const isSuperset = (currentBlock?.exerciseIndices.length ?? 1) > 1
+  const roundWord = isSuperset ? 'Tour' : 'Série'
+
+  const exerciseNumber = currentExerciseIndex + 1
   const exerciseTotal = exercises.length
-  const totalSetsInWorkout = exercises.reduce((s, ex) => s + ((ex as any).sets_count || 3), 0)
   const liveXpTarget = Math.max(totalSetsInWorkout * 18, liveXp || 1)
   const liveXpProgress = Math.min(100, Math.round((liveXp / liveXpTarget) * 100))
 
   const nextLabel = (() => {
-    if (state.isResting && currentExercise) {
-      return `Série ${state.currentSet}/${totalSets} — ${currentExercise.name ?? ''}`
+    if (currentExercise) {
+      return `${roundWord} ${currentSet}/${totalSets} — ${currentExercise.name ?? ''}`
     }
-    if (state.currentSet < totalSets) {
-      return `Série ${state.currentSet + 1}/${totalSets} — ${currentExercise?.name ?? ''}`
-    }
-    const nextEx = exercises[state.currentExerciseIndex + 1]
+    const nextEx = exercises[currentExerciseIndex + 1]
     return nextEx ? nextEx.name : 'Dernière série'
   })()
 
@@ -201,6 +204,33 @@ export default function StrengthWorkoutInterface({
         {!state.isResting && currentExercise && !isWorkoutComplete && (
           <div className="px-4 py-5 space-y-5">
 
+            {isSuperset && currentBlock && (
+              <div className="rounded-xl border-2 border-accent/40 bg-accent/5 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-accent uppercase tracking-wide">
+                    <Link2 className="w-3.5 h-3.5" /> Superset · Tour {currentSet}/{totalSets}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {positionInBlock + 1}/{currentBlockExercises.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {currentBlockExercises.map((ex, i) => (
+                    <div
+                      key={ex.id}
+                      className={cn(
+                        'flex items-center gap-2 text-sm px-2 py-1 rounded-lg',
+                        i === positionInBlock ? 'bg-accent/15 text-accent font-semibold' : 'text-muted-foreground'
+                      )}
+                    >
+                      <span className="w-5 text-center font-bold">{String.fromCharCode(65 + i)}</span>
+                      <span className="truncate">{ex.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="text-center space-y-1">
               <h2 className="text-2xl font-bold tracking-tight leading-tight">
                 {currentExercise.name}
@@ -213,6 +243,31 @@ export default function StrengthWorkoutInterface({
                 />
               </div>
             </div>
+
+            {/* Superset à la volée */}
+            {(canGroupWithNext || canUngroupCurrent) && (
+              <div className="flex justify-center flex-wrap gap-2">
+                {canGroupWithNext && (
+                  <button
+                    type="button"
+                    onClick={strengthWorkout.groupWithNext}
+                    className="flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent/80 transition-colors border border-accent/30 rounded-lg px-3 py-1.5"
+                  >
+                    <Link2 className="w-3.5 h-3.5" />
+                    Superset avec {nextBlockName ?? 'le suivant'}
+                  </button>
+                )}
+                {canUngroupCurrent && (
+                  <button
+                    type="button"
+                    onClick={strengthWorkout.ungroupCurrent}
+                    className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors border border-muted/40 rounded-lg px-3 py-1.5"
+                  >
+                    <Unlink className="w-3.5 h-3.5" /> Dégrouper
+                  </button>
+                )}
+              </div>
+            )}
 
             {(currentExercise as any).gif_url && (
               <div className="flex justify-center">
@@ -229,7 +284,7 @@ export default function StrengthWorkoutInterface({
 
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <Chip label="Reps" value={String((currentExercise as any).target_reps ?? '—')} />
-              <Chip label="Série" value={`${state.currentSet}/${totalSets}`} accent />
+              <Chip label={roundWord} value={`${currentSet}/${totalSets}`} accent />
               <Chip
                 label="Charge"
                 value={(currentExercise as any).target_weight
@@ -255,7 +310,7 @@ export default function StrengthWorkoutInterface({
 
             <SeriesDots
               total={totalSets}
-              current={state.currentSet}
+              current={currentSet}
               completedLogs={strengthWorkout.currentExerciseLogs.length}
             />
 
@@ -277,10 +332,13 @@ export default function StrengthWorkoutInterface({
 
             <SessionDrawer
               exercises={exercises}
-              currentExerciseIndex={state.currentExerciseIndex}
+              blocks={strengthWorkout.blocks}
+              currentBlockIndex={state.currentBlockIndex}
+              currentExerciseIndex={currentExerciseIndex}
               exerciseLogs={state.exerciseLogs}
               completedSets={state.completedSets}
               onSwitchTo={strengthWorkout.switchToExercise}
+              onReorder={strengthWorkout.reorderExercises}
             />
           </div>
         )}

@@ -59,14 +59,14 @@ export default function Training() {
   useEffect(() => {
     if (!quest || !isStrengthWorkout) return
     const exercises = quest.exercises ?? []
-    const idx = strengthWorkout.state.currentExerciseIndex
+    const idx = strengthWorkout.currentExerciseIndex
     updateLiveSession({
       currentExerciseName: exercises[idx]?.name ?? '',
       currentExerciseIndex: idx,
       progressPercentage: strengthWorkout.progressPercentage,
       totalExercises: exercises.length,
     })
-  }, [strengthWorkout.state.currentExerciseIndex, strengthWorkout.progressPercentage])
+  }, [strengthWorkout.currentExerciseIndex, strengthWorkout.progressPercentage])
 
   // ------------------------ LOAD QUEST ------------------------
   useEffect(() => {
@@ -91,7 +91,8 @@ export default function Training() {
             notes,
             sets_count,
             target_weight,
-            rest_seconds
+            rest_seconds,
+            superset_group
           )
         `)
         .eq('id', questId)

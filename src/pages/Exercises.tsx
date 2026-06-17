@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { Input } from '@/components/ui/input'
-import { Search, ChevronDown, ChevronRight, X, Dumbbell } from 'lucide-react'
+import { Search, ChevronDown, ChevronRight, X, Dumbbell, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GlobalExercise } from '@/hooks/useGlobalExercises'
+import { useAuth } from '@/hooks/useAuth'
+import { CreateExerciseDialog } from '@/components/exercises/CreateExerciseDialog'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -199,6 +201,11 @@ function ExerciseRow({ ex, onClick }: { ex: GlobalExercise; onClick: () => void 
 
       {/* Badges */}
       <div className="shrink-0 flex flex-col items-end gap-1">
+        {ex.is_custom && (
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-accent/20 text-accent">
+            Perso
+          </span>
+        )}
         {ex.difficulty && (
           <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', DIFFICULTY_COLORS[ex.difficulty] ?? 'bg-muted/30')}>
             {DIFFICULTY_FR[ex.difficulty] ?? ex.difficulty}
@@ -216,17 +223,21 @@ function ExerciseRow({ ex, onClick }: { ex: GlobalExercise; onClick: () => void 
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const EXERCISE_FIELDS = 'id, name, name_fr, body_part, target_muscle, secondary_muscles, equipment, difficulty, instructions, gif_url, image_url, is_custom'
+
 export default function Exercises() {
+  const { user } = useAuth()
   const [exercises, setExercises] = useState<GlobalExercise[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['chest']))
   const [selected, setSelected] = useState<GlobalExercise | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     supabase
       .from('exercises')
-      .select('id, name, name_fr, body_part, target_muscle, secondary_muscles, equipment, difficulty, instructions, gif_url, image_url')
+      .select(EXERCISE_FIELDS)
       .order('name')
       .then(({ data }) => {
         setExercises((data as GlobalExercise[]) ?? [])
@@ -262,7 +273,16 @@ export default function Exercises() {
     <div className="min-h-screen bg-background pb-20">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background border-b border-muted/30 px-4 pt-4 pb-3">
-        <h1 className="text-xl font-bold mb-3">Exercices</h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-xl font-bold">Exercices</h1>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-1.5 text-sm font-medium text-accent hover:opacity-80 transition-opacity"
+          >
+            <Plus className="w-4 h-4" />
+            Créer
+          </button>
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -330,6 +350,16 @@ export default function Exercises() {
       {selected && (
         <ExerciseModal ex={selected} onClose={() => setSelected(null)} />
       )}
+
+      <CreateExerciseDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        userId={user?.id}
+        onCreated={ex => {
+          setExercises(prev => [...prev, ex].sort((a, b) => a.name.localeCompare(b.name)))
+          setSelected(ex)
+        }}
+      />
     </div>
   )
 }

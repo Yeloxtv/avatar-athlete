@@ -202,6 +202,7 @@ export type Database = {
         Row: {
           body_part: string | null
           created_at: string | null
+          created_by: string | null
           difficulty: string | null
           equipment: string | null
           external_id: string | null
@@ -209,6 +210,7 @@ export type Database = {
           id: string
           image_url: string | null
           instructions: string[] | null
+          is_custom: boolean
           name: string
           name_fr: string | null
           secondary_muscles: string[] | null
@@ -218,6 +220,7 @@ export type Database = {
         Insert: {
           body_part?: string | null
           created_at?: string | null
+          created_by?: string | null
           difficulty?: string | null
           equipment?: string | null
           external_id?: string | null
@@ -225,6 +228,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           instructions?: string[] | null
+          is_custom?: boolean
           name: string
           name_fr?: string | null
           secondary_muscles?: string[] | null
@@ -234,6 +238,7 @@ export type Database = {
         Update: {
           body_part?: string | null
           created_at?: string | null
+          created_by?: string | null
           difficulty?: string | null
           equipment?: string | null
           external_id?: string | null
@@ -241,6 +246,7 @@ export type Database = {
           id?: string
           image_url?: string | null
           instructions?: string[] | null
+          is_custom?: boolean
           name?: string
           name_fr?: string | null
           secondary_muscles?: string[] | null
@@ -290,6 +296,7 @@ export type Database = {
           quest_id: string
           rest_seconds: number | null
           sets_count: number | null
+          superset_group: number | null
           target_reps: number | null
           target_weight: number | null
         }
@@ -303,6 +310,7 @@ export type Database = {
           quest_id: string
           rest_seconds?: number | null
           sets_count?: number | null
+          superset_group?: number | null
           target_reps?: number | null
           target_weight?: number | null
         }
@@ -316,6 +324,7 @@ export type Database = {
           quest_id?: string
           rest_seconds?: number | null
           sets_count?: number | null
+          superset_group?: number | null
           target_reps?: number | null
           target_weight?: number | null
         }

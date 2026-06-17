@@ -13,6 +13,7 @@ export interface GlobalExercise {
   instructions: string[]
   gif_url: string | null
   image_url: string | null
+  is_custom?: boolean
 }
 
 export function useGlobalExercises(enabled: boolean, bodyPart: string | null) {
@@ -24,7 +25,7 @@ export function useGlobalExercises(enabled: boolean, bodyPart: string | null) {
     setLoading(true)
     let query = supabase
       .from('exercises')
-      .select('id, name, name_fr, body_part, target_muscle, secondary_muscles, equipment, difficulty, instructions, gif_url, image_url')
+      .select('id, name, name_fr, body_part, target_muscle, secondary_muscles, equipment, difficulty, instructions, gif_url, image_url, is_custom')
       .order('name')
     if (bodyPart) query = (query as any).eq('body_part', bodyPart)
     ;(query as any).then(({ data }: { data: GlobalExercise[] | null }) => {

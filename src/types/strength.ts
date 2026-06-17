@@ -16,8 +16,10 @@ export interface PreviousPerformance {
 }
 
 export interface StrengthWorkoutState {
-  currentExerciseIndex: number
-  currentSet: number
+  // Progression par blocs (un bloc = un exercice simple OU un superset de 2-5 exercices)
+  currentBlockIndex: number
+  currentRound: number      // tour en cours dans le bloc (1-based) = n° de série de chaque exo du bloc
+  positionInBlock: number   // index de l'exercice courant dans le bloc (0-based)
   exerciseLogs: ExerciseLog[]
   restTimer: number
   isResting: boolean
